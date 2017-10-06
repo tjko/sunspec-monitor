@@ -8,6 +8,16 @@ Included tools:
 * sunspec-status
 
 
+Tested to work with:
+
+Inverter (Maker/Model)|Firmware Version|Notes
+----------------------|----------------|-----
+SolarEdge SE11400|3.1968|often first connection fails, but subsequent connections work
+SolarEdge SE11400|3.2180|works ok
+
+
+This script should work with any inverter that supports Modbus TCP and Sunspec standard...
+
 
 ## Requirements
 
@@ -40,11 +50,11 @@ To query Inverter information and current status *-v* (or *--verbose*) option ca
 
 ```
 
-# sunspec-status myinverter
+# sunspec-status -v myinverter
 
 INVERTER:
              Model: SolarEdge  SE11400
-  Firmware version: 0003.1968
+  Firmware version: 3.1968
      Serial Number: 7Dxxxxxx
 
             Status: ON
