@@ -1,0 +1,437 @@
+#!/usr/bin/perl
+#
+# sunspec-monitor
+#
+# Copyright (C) 2017 Timo Kokkonen <tjko@iki.fi>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+# Boston, MA  02110-1301, USA. 
+#
+#
+
+use Data::Dumper;
+use Device::Modbus::TCP::Client;
+use Getopt::Long;
+use strict;
+
+
+my $TIMEOUT = 10;
+my $PORT = 502;
+
+my $SUNSPEC_I_COMMON_BLOCK_START = 40000;
+my $SUNSPEC_I_MODEL_BLOCK_START = 40069;
+my $SUNSPEC_M_COMMON_BLOCK_START = 40121;
+my $SUNSPEC_M_MODEL_BLOCK_START = 40188;
+
+
+my %I_STATUS = ( 
+    0=>'Unknown', 
+    1=>'OFF', 
+    2=>'SLEEPING',
+    3=>'STARTING',
+    4=>'ON (MPPT)',
+    5=>'THROTTLED',
+    6=>'SHUTTING DOWN',
+    7=>'FAULT',
+    8=>'STANDBY'
+    );
+
+
+
+
+# get_inverter_common_block - return a hash containing Sunspec
+#                             Common Block values
+#
+sub get_inverter_common_block(*) {
+    my ($ctx) = @_;
+
+    my $req = $ctx->read_holding_registers(unit=>1,
+					   address=>$SUNSPEC_I_COMMON_BLOCK_START,
+					   quantity=>69);
+    $ctx->send_request($req) || die("send_request(): failed");
+
+    my $adu = $ctx->receive_response();
+    die("Read of Common block registers failed (device does not support SunSpec?)")
+    	unless ($adu->success);
+
+
+    my $data = pack("n*",@{$adu->values});
+    my $cb;
+    $cb->{C_SunSpec_ID} = unpack("a4",substr($data,0,4));
+    $cb->{C_SunSpec_DID} = unpack("n",substr($data,4,2));
+    $cb->{C_SunSpec_Length} = unpack("n",substr($data,6,2));
+    $cb->{C_Manufacturer} = unpack("a*",substr($data,8,32));
+    $cb->{C_Manufacturer} =~ s/\0+$//; 
+    $cb->{C_Model} = unpack("a*",substr($data,40,32));
+    $cb->{C_Model} =~ s/\0+$//; 
+    $cb->{C_Version} = unpack("a*",substr($data,88,16));
+    $cb->{C_Version} =~ s/\0+$//; 
+    $cb->{C_SerialNumber} = unpack("a*",substr($data,104,32));
+    $cb->{C_SerialNumber} =~ s/\0+$//; 
+    $cb->{C_DeviceAddress} = unpack("n",substr($data,136,2));
+
+    
+    die("Non SunSpec common block received (not SunSpec compliant device?)")
+    	     unless ($cb->{C_SunSpec_ID} eq "SunS" && $cb->{C_SunSpec_DID} == 1);
+
+    return $cb;
+}
+
+
+# get_inverter_model_block - return a hash containing Sunspec Inverter
+#                            Model Block values
+#
+sub get_inverter_model_block(*) {
+    my ($ctx) = @_;
+
+    my $req = $ctx->read_holding_registers(unit=>1,
+					   address=>$SUNSPEC_I_MODEL_BLOCK_START,
+					   quantity=>52);
+    $ctx->send_request($req) || die("send_request(): failed");
+
+    my $adu = $ctx->receive_response();
+    die("Read of Inverter Model block registers failed (device does not support SunSpec?)")
+    	unless ($adu->success);
+
+
+    my $data = pack("n*",@{$adu->values});
+    my $mb;
+    $mb->{C_SunSpec_DID} = unpack("n",substr($data,0,2));
+    $mb->{C_SunSpec_Length} = unpack("n",substr($data,2,2));
+    $mb->{I_AC_Current} = unpack("n",substr($data,4,2));
+    $mb->{I_AC_CurrentA} = unpack("n",substr($data,6,2));
+    $mb->{I_AC_CurrentB} = unpack("n",substr($data,8,2));
+    $mb->{I_AC_CurrentC} = unpack("n",substr($data,10,2));
+    $mb->{I_AC_Current_SF} = unpack("n!",substr($data,12,2));
+    $mb->{I_AC_VoltageAB} = unpack("n",substr($data,14,2));
+    $mb->{I_AC_VoltageBC} = unpack("n",substr($data,16,2));
+    $mb->{I_AC_VoltageCA} = unpack("n",substr($data,18,2));
+    $mb->{I_AC_VoltageAN} = unpack("n",substr($data,20,2));
+    $mb->{I_AC_VoltageBN} = unpack("n",substr($data,22,2));
+    $mb->{I_AC_VoltageCN} = unpack("n",substr($data,24,2));
+    $mb->{I_AC_Voltage_SF} = unpack("n!",substr($data,26,2));
+    $mb->{I_AC_Power} = unpack("n!",substr($data,28,2));
+    $mb->{I_AC_Power_SF} = unpack("n!",substr($data,30,2));
+    $mb->{I_AC_Frequency} = unpack("n",substr($data,32,2));
+    $mb->{I_AC_Frequency_SF} = unpack("n!",substr($data,34,2));
+    $mb->{I_AC_VA} = unpack("n!",substr($data,36,2));
+    $mb->{I_AC_VA_SF} = unpack("n!",substr($data,38,2));
+    $mb->{I_AC_VAR} = unpack("n!",substr($data,40,2));
+    $mb->{I_AC_VAR_SF} = unpack("n!",substr($data,42,2));
+    $mb->{I_AC_PF} = unpack("n!",substr($data,44,2));
+    $mb->{I_AC_PF_SF} = unpack("n!",substr($data,46,2));
+    $mb->{I_AC_Energy_WH} = unpack("N",substr($data,48,4));
+    $mb->{I_AC_Energy_WH_SF} = unpack("n!",substr($data,52,2));
+    $mb->{I_DC_Current} = unpack("n",substr($data,54,2));
+    $mb->{I_DC_Current_SF} = unpack("n!",substr($data,56,2));
+    $mb->{I_DC_Voltage} = unpack("n",substr($data,58,2));
+    $mb->{I_DC_Voltage_SF} = unpack("n!",substr($data,60,2));
+    $mb->{I_DC_Power} = unpack("n!",substr($data,62,2));
+    $mb->{I_DC_Power_SF} = unpack("n!",substr($data,64,2));
+    # 40103 unused
+    $mb->{I_Temp_Sink} = unpack("n!",substr($data,68,2));
+    # 40105-40106 unused
+    $mb->{I_Temp_Sink_SF} = unpack("n!",substr($data,74,2));
+    $mb->{I_Status} = unpack("n",substr($data,76,2));
+    $mb->{I_Status_Vendor} = unpack("n",substr($data,78,2));
+    $mb->{I_Event_1} = unpack("N",substr($data,80,4));
+    $mb->{I_Event_2} = unpack("N",substr($data,84,4));
+    $mb->{I_Event_1_Vendor} = unpack("N",substr($data,88,4));
+    $mb->{I_Event_2_Vendor} = unpack("N",substr($data,92,4));
+    $mb->{I_Event_3_Vendor} = unpack("N",substr($data,96,4));
+    $mb->{I_Event_4_Vendor} = unpack("N",substr($data,100,4));
+
+    die("Non SunSpec Model block received (not SunSpec compliant device?)")
+    	     unless ($mb->{C_SunSpec_Length} == 50);
+
+    return $mb;
+}
+
+
+# get_meter_common_block - return a has containing Sunspec
+#                          Meter Common block values
+#  meter = 1..3
+#
+sub get_meter_common_block(**) {
+    my ($ctx,$meter) = @_;
+
+    $meter=1 if ($meter < 1);
+    $meter=3 if ($meter > 3);
+    my $offset = ($meter - 1) * 174;
+
+    my $req = $ctx->read_holding_registers(unit=>1,
+					   address=>$SUNSPEC_M_COMMON_BLOCK_START + $offset,
+					   quantity=>65);
+    $ctx->send_request($req) || die("send_request(): failed");
+
+    my $adu = $ctx->receive_response();
+    die("Read of Meter $meter block registers failed (device does not support SunSpec?)")
+    	unless ($adu->success);
+
+
+    my $data = pack("n*",@{$adu->values});
+    my $cb;
+    $cb->{C_SunSpec_DID} = unpack("n",substr($data,0,2));
+    $cb->{C_SunSpec_Length} = unpack("n",substr($data,2,2));
+    $cb->{C_Manufacturer} = unpack("a*",substr($data,4,32));
+    $cb->{C_Manufacturer} =~ s/\0+$//;
+    $cb->{C_Model} = unpack("a*",substr($data,36,32));
+    $cb->{C_Model} =~ s/\0+$//;
+    $cb->{C_Option} = unpack("a*",substr($data,68,16));
+    $cb->{C_Option} =~ s/\0+$//;
+    $cb->{C_Version} = unpack("a*",substr($data,84,16));
+    $cb->{C_Version} =~ s/\0+$//;
+    $cb->{C_SerialNumber} = unpack("a*",substr($data,100,32));
+    $cb->{C_SerialNumber} =~ s/\0+$//;
+
+
+    die("Non SunSpec Meter Common block received (not SunSpec compliant device?)")
+    	     unless ($cb->{C_SunSpec_Length} == 65);
+
+    return $cb;
+}
+
+
+# get_meter_model_block - return a has containing Sunspec
+#                         Meter Model block values
+#  meter = 1..3
+#
+sub get_meter_model_block(**) {
+    my ($ctx,$meter) = @_;
+
+    $meter=1 if ($meter < 1);
+    $meter=3 if ($meter > 3);
+    my $offset = ($meter - 1) * 174;
+
+    my $req = $ctx->read_holding_registers(unit=>1,
+					   address=>$SUNSPEC_M_MODEL_BLOCK_START + $offset,
+					   quantity=>107);
+    $ctx->send_request($req) || die("send_request(): failed");
+
+    my $adu = $ctx->receive_response();
+    die("Read of Meter $meter block registers failed (device does not support SunSpec?)")
+    	unless ($adu->success);
+
+
+    my $data = pack("n*",@{$adu->values});
+    my $mb;
+    $mb->{C_SunSpec_DID} = unpack("n",substr($data,0,2));
+    $mb->{C_SunSpec_Length} = unpack("n",substr($data,2,2));
+    $mb->{M_AC_Current} = unpack("n!",substr($data,4,2));
+    $mb->{M_AC_Current_A} = unpack("n!",substr($data,6,2));
+    $mb->{M_AC_Current_B} = unpack("n!",substr($data,8,2));
+    $mb->{M_AC_Current_C} = unpack("n!",substr($data,10,2));
+    $mb->{M_AC_Current_SF} = unpack("n!",substr($data,12,2));
+    $mb->{M_AC_Voltage_LN} = unpack("n!",substr($data,14,2));
+    $mb->{M_AC_Voltage_AN} = unpack("n!",substr($data,16,2));
+    $mb->{M_AC_Voltage_BN} = unpack("n!",substr($data,18,2));
+    $mb->{M_AC_Voltage_CN} = unpack("n!",substr($data,20,2));
+    $mb->{M_AC_Voltage_LL} = unpack("n!",substr($data,22,2));
+    $mb->{M_AC_Voltage_AB} = unpack("n!",substr($data,24,2));
+    $mb->{M_AC_Voltage_BC} = unpack("n!",substr($data,26,2));
+    $mb->{M_AC_Voltage_CA} = unpack("n!",substr($data,28,2));
+    $mb->{M_AC_Voltage_SF} = unpack("n!",substr($data,30,2));
+    $mb->{M_AC_Freq} = unpack("n!",substr($data,32,2));
+    $mb->{M_AC_Freq_SF} = unpack("n!",substr($data,34,2));
+    $mb->{M_AC_Power} = unpack("n!",substr($data,36,2));
+    $mb->{M_AC_Power_A} = unpack("n!",substr($data,38,2));
+    $mb->{M_AC_Power_B} = unpack("n!",substr($data,40,2));
+    $mb->{M_AC_Power_C} = unpack("n!",substr($data,42,2));
+    $mb->{M_AC_Power_SF} = unpack("n!",substr($data,44,2));
+    $mb->{M_AC_VA} = unpack("n!",substr($data,46,2));
+    $mb->{M_AC_VA_A} = unpack("n!",substr($data,48,2));
+    $mb->{M_AC_VA_B} = unpack("n!",substr($data,50,2));
+    $mb->{M_AC_VA_C} = unpack("n!",substr($data,52,2));
+    $mb->{M_AC_VA_SF} = unpack("n!",substr($data,54,2));
+    $mb->{M_AC_VAR} = unpack("n!",substr($data,56,2));
+    $mb->{M_AC_VAR_A} = unpack("n!",substr($data,58,2));
+    $mb->{M_AC_VAR_B} = unpack("n!",substr($data,60,2));
+    $mb->{M_AC_VAR_C} = unpack("n!",substr($data,62,2));
+    $mb->{M_AC_VAR_SF} = unpack("n!",substr($data,64,2));
+    $mb->{M_AC_PF} = unpack("n!",substr($data,66,2));
+    $mb->{M_AC_PF_A} = unpack("n!",substr($data,68,2));
+    $mb->{M_AC_PF_B} = unpack("n!",substr($data,70,2));
+    $mb->{M_AC_PF_C} = unpack("n!",substr($data,72,2));
+    $mb->{M_AC_PF_SF} = unpack("n!",substr($data,74,2));
+    $mb->{M_Exported} = unpack("N",substr($data,76,4));
+    $mb->{M_Exported_A} = unpack("N",substr($data,80,4));
+    $mb->{M_Exported_B} = unpack("N",substr($data,84,4));
+    $mb->{M_Exported_C} = unpack("N",substr($data,88,4));
+    $mb->{M_Imported} = unpack("N",substr($data,92,4));
+    $mb->{M_Imported_A} = unpack("N",substr($data,96,4));
+    $mb->{M_Imported_B} = unpack("N",substr($data,100,4));
+    $mb->{M_Imported_C} = unpack("N",substr($data,104,4));
+    $mb->{M_Energy_W_SF} = unpack("n!",substr($data,108,2));
+    $mb->{M_Exported_VA} = unpack("N",substr($data,110,4));
+    $mb->{M_Exported_VA_A} = unpack("N",substr($data,114,4));
+    $mb->{M_Exported_VA_B} = unpack("N",substr($data,118,4));
+    $mb->{M_Exported_VA_C} = unpack("N",substr($data,122,4));
+    $mb->{M_Imported_VA} = unpack("N",substr($data,126,4));
+    $mb->{M_Imported_VA_A} = unpack("N",substr($data,130,4));
+    $mb->{M_Imported_VA_B} = unpack("N",substr($data,134,4));
+    $mb->{M_Imported_VA_C} = unpack("N",substr($data,138,4));
+    $mb->{M_Energy_VA_SF} = unpack("n!",substr($data,142,2));
+    $mb->{M_Import_VARh_Q1} = unpack("N",substr($data,144,4));
+    $mb->{M_Import_VARh_Q1A} = unpack("N",substr($data,148,4));
+    $mb->{M_Import_VARh_Q1B} = unpack("N",substr($data,152,4));
+    $mb->{M_Import_VARh_Q1C} = unpack("N",substr($data,156,4));
+    $mb->{M_Import_VARh_Q2} = unpack("N",substr($data,160,4));
+    $mb->{M_Import_VARh_Q2A} = unpack("N",substr($data,164,4));
+    $mb->{M_Import_VARh_Q2B} = unpack("N",substr($data,168,4));
+    $mb->{M_Import_VARh_Q2C} = unpack("N",substr($data,172,4));
+    $mb->{M_Import_VARh_Q3} = unpack("N",substr($data,176,4));
+    $mb->{M_Import_VARh_Q3A} = unpack("N",substr($data,180,4));
+    $mb->{M_Import_VARh_Q3B} = unpack("N",substr($data,184,4));
+    $mb->{M_Import_VARh_Q3C} = unpack("N",substr($data,188,4));
+    $mb->{M_Import_VARh_Q4} = unpack("N",substr($data,192,4));
+    $mb->{M_Import_VARh_Q4A} = unpack("N",substr($data,196,4));
+    $mb->{M_Import_VARh_Q4B} = unpack("N",substr($data,200,4));
+    $mb->{M_Import_VARh_Q4C} = unpack("N",substr($data,204,4));
+    $mb->{M_Energy_VAR_SF} = unpack("n!",substr($data,208,2));
+    $mb->{M_Events} = unpack("N",substr($data,210,4));
+
+
+    die("Non SunSpec Meter Common block received (not SunSpec compliant device?)")
+    	     unless ($mb->{C_SunSpec_DID} >= 201 && $mb->{C_SunSpec_DID} <= 204);
+
+    return $mb;
+}
+
+
+# scale_value - scale input value using scale factor (SF)
+#
+sub scale_value(**) {
+  my ($val,$sf) = @_;
+
+  return $val * (10 ** $sf);
+}
+
+
+###################################################################################
+# main program
+
+my $verbose_mode = 0;
+my $debug_mode = 0;
+my $meter = 0;
+my $port = $PORT;
+my $timeout = $TIMEOUT;
+
+GetOptions("verbose|v" => \$verbose_mode,
+	   "debug|d" => \$debug_mode,
+	   "port|p=s" => \$port,
+	   "meter|m=s" => \$meter,
+	   "timeout|t=s" => \$timeout);
+
+my $host = shift;
+
+unless ($host) {
+  print STDERR "syntax: $0 [options] <host>\n\n",
+    "Options:\n",
+    " --port=<port>, -p <port>      Use port (default $PORT)\n",
+    " --meter=<meter>, -m <meter>   Query meter (default 1) \n",
+    "                               (meter = 1..3)\n",
+    " --timeout=<sec>, -t <sec>     Timeout (default $TIMEOUT)\n",
+    " --verbose, -v                 Verbose mode\n\n";
+    " --debug, -d                   Debug mode\n\n";
+  exit(1);
+}
+
+
+
+my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
+
+
+my $cb = get_inverter_common_block($c);
+
+my $fw_ver = $cb->{C_Version};
+
+$fw_ver =~ s/^0+//;
+
+if ($verbose_mode) {
+  print "INVERTER:\n";
+  print "             Model: $cb->{C_Manufacturer} $cb->{C_Model}\n";
+  print "  Firmware version: $fw_ver\n";
+  print "     Serial Number: $cb->{C_SerialNumber}\n";
+  print Dumper($cb) if ($debug_mode);
+  print "\n";
+}
+
+
+my $mb = get_inverter_model_block($c);
+
+my $status = $I_STATUS{$mb->{I_Status}};
+my $ac_power = scale_value($mb->{I_AC_Power},$mb->{I_AC_Power_SF});
+my $dc_power = scale_value($mb->{I_DC_Power},$mb->{I_DC_Power_SF});
+my $temp = scale_value($mb->{I_Temp_Sink},$mb->{I_Temp_Sink_SF});
+my $eff = ($dc_power > 0 ? $ac_power/$dc_power*100 : 0);
+my $dc_v = scale_value($mb->{I_DC_Voltage},$mb->{I_DC_Voltage_SF});
+my $ac_v = scale_value($mb->{I_AC_VoltageAB},$mb->{I_AC_Voltage_SF});
+my $ac_i = scale_value($mb->{I_AC_Current},$mb->{I_AC_Current_SF});
+my $dc_i = scale_value($mb->{I_DC_Current},$mb->{I_DC_Current_SF});
+my $ac_f = scale_value($mb->{I_AC_Frequency},$mb->{I_AC_Frequency_SF});
+my $wh = scale_value($mb->{I_AC_Energy_WH},$mb->{I_AC_Energy_WH_SF});
+
+if ($verbose_mode) {
+  print  "            Status: $status\n\n";
+  printf(" Power Output (AC): %12.0f W\n",$ac_power);
+  printf("  Power Input (DC): %12.0f W\n",$dc_power);
+  printf("        Efficiency: %12.2f %\n",$eff);
+  printf("  Total Production: %12.3f kWh\n",$wh/1000);
+  printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$ac_v,$ac_f);
+  printf("      Current (AC): %12.2f A\n",$ac_i);
+  printf("      Voltage (DC): %12.2f V\n",$dc_v);
+  printf("      Current (DC): %12.2f A\n",$dc_i);
+  printf("       Temperature: %12.2f C (heatsink)\n",$temp);
+  print Dumper($mb) if ($debug_mode);
+  print "\n";
+}
+
+if ($verbose_mode) {
+  my $mcb = get_meter_common_block($c,1);
+  print "METER (#1):\n";
+  print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
+  print "            Option: $mcb->{C_Option}\n";
+  print "  Firmware version: $mcb->{C_Version}\n";
+  print "     Serial Number: $mcb->{C_SerialNumber}\n";
+  print Dumper($mcb) if ($debug_mode);
+  print "\n";
+}
+
+my $mmb = get_meter_model_block($c,1);
+my $m_e = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
+my $m_i = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
+
+if ($verbose_mode) {
+  printf("   Exported Energy: %12.3f kWh\n",$m_e/1000);
+  printf("   Imported Energy: %12.3f kWh\n",$m_i/1000);
+  print Dumper($mmb) if ($debug_mode);
+  print "\n";
+}
+
+
+
+unless ($verbose_mode) {
+print("status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy,imporoted_energy\n") if ($debug_mode);
+
+printf("%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n",
+       $status,$ac_power,$dc_power,$wh,
+       $ac_v,$ac_i,$dc_v,$dc_i,
+       $temp,$m_e,$m_i);
+}
+
+
+$c->disconnect;
+
+# eof :-)
