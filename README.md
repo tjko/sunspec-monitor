@@ -75,7 +75,7 @@ To get inverter status information in CSV format simply invoke script withouth *
 CSV output is in following format:
 
 Columns|1|2|3|4|5|6|7|8|9|10|11
---------------------------------
+-------|-|-|-|-|-|-|-|-|-|--|---
 Values|status|ac_power|dc_power|total_production|ac_voltage|ac_current|dc_voltage|dc_current|temperature|exported_energy|imporoted_energy
 
 Example output:
