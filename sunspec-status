@@ -6,7 +6,7 @@
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
+# as published by the Free Software Foundation; either version 3
 # of the License, or (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -324,7 +324,7 @@ sub scale_value(**) {
 
 my $verbose_mode = 0;
 my $debug_mode = 0;
-my $meter = 0;
+my $meter = 1;
 my $port = $PORT;
 my $timeout = $TIMEOUT;
 
@@ -348,6 +348,8 @@ unless ($host) {
   exit(1);
 }
 
+die("invalid port ($port) specified") unless ($port > 0 && $port < 65536);
+die("invalid meter ($meter) specified") unless ($meter >= 1 && $meter <= 3);
 
 
 my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
@@ -399,8 +401,8 @@ if ($verbose_mode) {
 }
 
 if ($verbose_mode) {
-  my $mcb = get_meter_common_block($c,1);
-  print "METER (#1):\n";
+  my $mcb = get_meter_common_block($c,$meter);
+  print "METER (#".$meter."):\n";
   print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
   print "            Option: $mcb->{C_Option}\n";
   print "  Firmware version: $mcb->{C_Version}\n";
@@ -412,10 +414,21 @@ if ($verbose_mode) {
 my $mmb = get_meter_model_block($c,1);
 my $m_e = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
 my $m_i = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
+my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
+my $m_f = scale_value($mmb->{M_AC_Freq},$mmb->{M_AC_Freq_SF});
+my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
+my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
+my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
+my $m_pf = scale_value($mmb->{M_AC_PF}/100,$mmb->{M_AC_PF_SF});
 
 if ($verbose_mode) {
   printf("   Exported Energy: %12.3f kWh\n",$m_e/1000);
   printf("   Imported Energy: %12.3f kWh\n",$m_i/1000);
+  printf("        Real Power: %12.0f W\n",$m_p);
+  printf("    Apparent Power: %12.0f VA\n",$m_pa);
+  printf("      Power Factor: %12.2f\n",$m_pf);
+  printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
+  printf("      Current (AC): %12.2f A\n",$m_c);
   print Dumper($mmb) if ($debug_mode);
   print "\n";
 }
