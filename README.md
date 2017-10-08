@@ -8,12 +8,12 @@ Included tools:
 * sunspec-status
 
 
-Tested to work with:
+Tested to work with following Inverters:
 
-Inverter (Maker/Model)|Firmware Version|Notes
-----------------------|----------------|-----
-SolarEdge SE11400|3.1968|often first connection fails, but subsequent connections work
-SolarEdge SE11400|3.2180|works ok
+Manufacturer|Model|Firmware Version|Notes
+------------|-----|----------------|-----
+SolarEdge|SE11400|3.1968|often first connection fails, but subsequent connections work
+SolarEdge|SE11400|3.2180|works ok
 
 
 This script should work with any inverter that supports Modbus TCP and Sunspec standard...
@@ -57,7 +57,7 @@ INVERTER:
   Firmware version: 3.1968
      Serial Number: 7Dxxxxxx
 
-            Status: ON
+            Status: ON (MPPT)
 
  Power Output (AC):         8014 W
   Power Input (DC):         8136 W
@@ -95,7 +95,7 @@ Example output:
 ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12
 ```
 
-To log data every five minutes following cronjob count be used:
+To log data every five minutes following cronjob could be used:
 ```
 */5 * * * * /usr/local/bin/sunspec-status myinverter >> /var/log/myinverter.csv &
 ```
