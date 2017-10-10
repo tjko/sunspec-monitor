@@ -77,6 +77,11 @@ METER (#1):
 
    Exported Energy:      148.457 kWh
    Imported Energy:        0.012 kWh
+        Real Power:         8026 W
+    Apparent Power:         8031 VA
+      Power Factor:         1.00
+      Voltage (AC):       239.90 V (60.00 Hz)
+      Current (AC):        33.39 A
 
 ```
 
