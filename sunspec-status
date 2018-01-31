@@ -2,7 +2,7 @@
 #
 # sunspec-monitor
 #
-# Copyright (C) 2017 Timo Kokkonen <tjko@iki.fi>
+# Copyright (C) 2017-2018 Timo Kokkonen <tjko@iki.fi>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -341,7 +341,7 @@ unless ($host) {
     "Options:\n",
     " --port=<port>, -p <port>      Use port (default $PORT)\n",
     " --meter=<meter>, -m <meter>   Query meter (default 1) \n",
-    "                               (meter = 1..3)\n",
+    "                               (meter = 1..3  or 0 = no meter)\n",
     " --timeout=<sec>, -t <sec>     Timeout (default $TIMEOUT)\n",
     " --verbose, -v                 Verbose mode\n\n";
     " --debug, -d                   Debug mode\n\n";
@@ -349,7 +349,7 @@ unless ($host) {
 }
 
 die("invalid port ($port) specified") unless ($port > 0 && $port < 65536);
-die("invalid meter ($meter) specified") unless ($meter >= 1 && $meter <= 3);
+die("invalid meter ($meter) specified") unless ($meter >= 0 && $meter <= 3);
 
 
 my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
@@ -400,37 +400,42 @@ if ($verbose_mode) {
   print "\n";
 }
 
-if ($verbose_mode) {
-  my $mcb = get_meter_common_block($c,$meter);
-  print "METER (#".$meter."):\n";
-  print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
-  print "            Option: $mcb->{C_Option}\n";
-  print "  Firmware version: $mcb->{C_Version}\n";
-  print "     Serial Number: $mcb->{C_SerialNumber}\n";
-  print Dumper($mcb) if ($debug_mode);
-  print "\n";
-}
 
-my $mmb = get_meter_model_block($c,1);
-my $m_e = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
-my $m_i = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
-my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
-my $m_f = scale_value($mmb->{M_AC_Freq},$mmb->{M_AC_Freq_SF});
-my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
-my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
-my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
-my $m_pf = scale_value($mmb->{M_AC_PF}/100,$mmb->{M_AC_PF_SF});
+my ($m_i, $m_e);
 
-if ($verbose_mode) {
-  printf("   Exported Energy: %12.3f kWh\n",$m_e/1000);
-  printf("   Imported Energy: %12.3f kWh\n",$m_i/1000);
-  printf("        Real Power: %12.0f W\n",$m_p);
-  printf("    Apparent Power: %12.0f VA\n",$m_pa);
-  printf("      Power Factor: %12.2f\n",$m_pf);
-  printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
-  printf("      Current (AC): %12.2f A\n",$m_c);
-  print Dumper($mmb) if ($debug_mode);
-  print "\n";
+if ($meter > 0) {
+  if ($verbose_mode) {
+    my $mcb = get_meter_common_block($c,$meter);
+    print "METER (#".$meter."):\n";
+    print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
+    print "            Option: $mcb->{C_Option}\n";
+    print "  Firmware version: $mcb->{C_Version}\n";
+    print "     Serial Number: $mcb->{C_SerialNumber}\n";
+    print Dumper($mcb) if ($debug_mode);
+    print "\n";
+  }
+
+  my $mmb = get_meter_model_block($c,1);
+  $m_e = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
+  $m_i = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
+  my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
+  my $m_f = scale_value($mmb->{M_AC_Freq},$mmb->{M_AC_Freq_SF});
+  my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
+  my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
+  my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
+  my $m_pf = scale_value($mmb->{M_AC_PF}/100,$mmb->{M_AC_PF_SF});
+
+  if ($verbose_mode) {
+    printf("   Exported Energy: %12.3f kWh\n",$m_e/1000);
+    printf("   Imported Energy: %12.3f kWh\n",$m_i/1000);
+    printf("        Real Power: %12.0f W\n",$m_p);
+    printf("    Apparent Power: %12.0f VA\n",$m_pa);
+    printf("      Power Factor: %12.2f\n",$m_pf);
+    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
+    printf("      Current (AC): %12.2f A\n",$m_c);
+    print Dumper($mmb) if ($debug_mode);
+    print "\n";
+  }
 }
 
 
