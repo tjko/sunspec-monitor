@@ -14,6 +14,7 @@ Manufacturer|Model|Firmware Version|Notes
 ------------|-----|----------------|-----
 SolarEdge|SE11400|3.1968|often first connection fails, but subsequent connections work
 SolarEdge|SE11400|3.2180|works ok
+SolarEdge|SE3500|3.2173|often first connection fails, but subseuqent connetions work
 
 
 This script should work with any inverter that supports Modbus TCP and Sunspec standard...
@@ -38,7 +39,7 @@ syntax: sunspec-status [options] <host>
 Options:
  --port=<port>, -p <port>      Use port (default 502)
  --meter=<meter>, -m <meter>   Query meter (default 1) 
-                               (meter = 1..3)
+                               (meter = 1..3  or 0 = no meter)
  --timeout=<sec>, -t <sec>     Timeout (default 10)
  --verbose, -v                 Verbose mode
 ```
