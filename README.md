@@ -40,6 +40,7 @@ Options:
  --port=<port>, -p <port>      Use port (default 502)
  --meter=<meter>, -m <meter>   Query meter (default 1) 
                                (meter = 1..3  or 0 = no meter)
+ --numeric, -n                 Numeric output mode (time, status)
  --timeout=<sec>, -t <sec>     Timeout (default 10)
  --verbose, -v                 Verbose mode
 ```
@@ -90,16 +91,22 @@ To get inverter status information in CSV format simply invoke script withouth *
 
 CSV output is in following format:
 
-Columns|1|2|3|4|5|6|7|8|9|10|11
--------|-|-|-|-|-|-|-|-|-|--|---
-Values|status|ac_power|dc_power|total_production|ac_voltage|ac_current|dc_voltage|dc_current|temperature|exported_energy|imporoted_energy
+Columns|1|2|3|4|5|6|7|8|9|10|11|12
+-------|-|-|-|-|-|-|-|-|-|--|--|---
+Values|timestamp|status|ac_power|dc_power|total_production|ac_voltage|ac_current|dc_voltage|dc_current|temperature|exported_energy|imporoted_energy
 
 Example output:
 
 ```
 # sunspec-status myinverter
-ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12
+2018-01-30 13:42:01,ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12
 ```
+
+```
+# sunspec-status -n myinverter
+1517348521,4,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12
+```
+
 
 To log data every five minutes following cronjob could be used:
 ```

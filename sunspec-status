@@ -324,6 +324,7 @@ sub scale_value(**) {
 
 my $verbose_mode = 0;
 my $debug_mode = 0;
+my $numeric_mode = 0;
 my $meter = 1;
 my $port = $PORT;
 my $timeout = $TIMEOUT;
@@ -332,6 +333,7 @@ GetOptions("verbose|v" => \$verbose_mode,
 	   "debug|d" => \$debug_mode,
 	   "port|p=s" => \$port,
 	   "meter|m=s" => \$meter,
+	   "numeric|n" => \$numeric_mode,
 	   "timeout|t=s" => \$timeout);
 
 my $host = shift;
@@ -342,6 +344,7 @@ unless ($host) {
     " --port=<port>, -p <port>      Use port (default $PORT)\n",
     " --meter=<meter>, -m <meter>   Query meter (default 1) \n",
     "                               (meter = 1..3  or 0 = no meter)\n",
+    " --numeric, -n                 Numeric output mode (time, status)\n",
     " --timeout=<sec>, -t <sec>     Timeout (default $TIMEOUT)\n",
     " --verbose, -v                 Verbose mode\n\n";
     " --debug, -d                   Debug mode\n\n";
@@ -353,8 +356,7 @@ die("invalid meter ($meter) specified") unless ($meter >= 0 && $meter <= 3);
 
 
 my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
-
-
+my $tstamp = time();
 my $cb = get_inverter_common_block($c);
 
 my $fw_ver = $cb->{C_Version};
@@ -441,10 +443,17 @@ if ($meter > 0) {
 
 
 unless ($verbose_mode) {
-print("status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy,imporoted_energy\n") if ($debug_mode);
+print("timestamp,status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy,imporoted_energy\n") if ($debug_mode);
 
-printf("%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n",
-       $status,$ac_power,$dc_power,$wh,
+if ($numeric_mode) {
+    $status=$mb->{I_Status};
+} else {
+    my($sec,$min,$hour,$day,$month,$year) = (localtime($tstamp))[0,1,2,3,4,5];
+    $tstamp=sprintf("%04d-%02d-%02d %02d:%02d:%02d",$year+1900,$month+1,$day,$hour,$min,$sec);
+}
+
+printf("%s,%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n",
+       $tstamp,$status,$ac_power,$dc_power,$wh,
        $ac_v,$ac_i,$dc_v,$dc_i,
        $temp,$m_e,$m_i);
 }
