@@ -29,7 +29,8 @@ This script should work with any inverter that supports Modbus TCP and Sunspec s
 
 This is simple script to query Inverter (and production/consumption meter) status.
 Script can be used interactively to display inverter status and details. Or alternatively
-it can be used to log production data into a CSV formatted file. 
+it can be used to log production data into a CSV formatted file. CSV format is the default,
+but output in JSON format is also available.
 
 ### Syntax
 
@@ -41,6 +42,7 @@ Options:
  --meter=<meter>, -m <meter>   Query meter (default 1) 
                                (meter = 1..3  or 0 = no meter)
  --numeric, -n                 Numeric output mode (time, status)
+ --json, -j                    Output in JSON (instead of CSV) format
  --timeout=<sec>, -t <sec>     Timeout (default 10)
  --verbose, -v                 Verbose mode
 ```
