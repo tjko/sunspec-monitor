@@ -420,7 +420,7 @@ if ($meter > 0) {
     print "\n";
   }
 
-  my $mmb = get_meter_model_block($c,1);
+  my $mmb = get_meter_model_block($c,$meter);
   $m_e = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
   $m_i = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
   my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
