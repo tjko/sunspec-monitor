@@ -33,6 +33,11 @@ Script can be used interactively to display inverter status and details. Or alte
 it can be used to log production data into a CSV formatted file. CSV format is the default,
 but output in JSON format is also available.
 
+If there is second (import/export) meter also connected to the inverter it is possible
+to query it as well.  Default is to query meter in address 1. To query also second meter
+option *-m 1,2* can be used.
+If no meter is installed *-m 0* can be used to skip querying any meter.
+
 ### Syntax
 
 ```
@@ -94,20 +99,20 @@ To get inverter status information in CSV format simply invoke script withouth *
 
 CSV output is in following format:
 
-Columns|1|2|3|4|5|6|7|8|9|10|11|12
--------|-|-|-|-|-|-|-|-|-|--|--|---
-Values|timestamp|status|ac_power|dc_power|total_production|ac_voltage|ac_current|dc_voltage|dc_current|temperature|exported_energy|imporoted_energy
+Columns|1|2|3|4|5|6|7|8|9|10|11|12|13|14
+-------|-|-|-|-|-|-|-|-|-|--|--|--|--|---
+Values|timestamp|status|ac_power|dc_power|total_production|ac_voltage|ac_current|dc_voltage|dc_current|temperature|exported_energy_m1|imporoted_energy_m1|exported_energy_m2|imported_energy_m2
 
 Example output:
 
 ```
 # sunspec-status myinverter
-2018-01-30 13:42:01,ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12
+2018-01-30 13:42:01,ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12,0,0
 ```
 
 ```
 # sunspec-status -n myinverter
-1517348521,4,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12
+1517348521,4,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12,0,0
 ```
 
 
@@ -117,4 +122,11 @@ To log data every five minutes following cronjob could be used:
 ```
 
 
+If there is two meters in the system (typically a production meter and a second
+import/export meter at grid connection point) both can be queried simultaneously:
+
+```
+# sunspec-status -m 1,2 myinverter
+2018-01-30 13:42:01,ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12,35603,8471
+```
 

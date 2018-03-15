@@ -326,9 +326,10 @@ my $verbose_mode = 0;
 my $debug_mode = 0;
 my $numeric_mode = 0;
 my $json_mode = 0;
-my $meter = 1;
+my $meter;
 my $port = $PORT;
 my $timeout = $TIMEOUT;
+my @meters;
 
 GetOptions("verbose|v" => \$verbose_mode,
 	   "debug|d" => \$debug_mode,
@@ -355,7 +356,23 @@ unless ($host) {
 }
 
 die("invalid port ($port) specified") unless ($port > 0 && $port < 65536);
-die("invalid meter ($meter) specified") unless ($meter >= 0 && $meter <= 3);
+if ($meter ne '') {
+    my @tmp = split(/\s*,\s*/,$meter);
+    
+    for my $i (0..$#tmp) {
+	my $m = int($tmp[$i]);
+	die("invalid meter specified: $tmp[$i]")  unless ($m >= 0 && $m <= 3);
+	if ($m == 0) {
+	    undef @meters;
+	    last;
+	}
+	push @meters, $m;
+    }
+} else {
+    # default to read first (built-in) meter
+    push @meters, 1;
+}
+
 
 
 my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
@@ -406,47 +423,51 @@ if ($verbose_mode) {
 }
 
 
-my ($m_i, $m_e);
+my (@m_i, @m_e);
+my $mcount = 0;
 
-if ($meter > 0) {
-  if ($verbose_mode) {
-    my $mcb = get_meter_common_block($c,$meter);
-    print "METER (#".$meter."):\n";
-    print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
-    print "            Option: $mcb->{C_Option}\n";
-    print "  Firmware version: $mcb->{C_Version}\n";
-    print "     Serial Number: $mcb->{C_SerialNumber}\n";
-    print Dumper($mcb) if ($debug_mode);
-    print "\n";
-  }
+if (@meters > 0) {
+    foreach $meter (@meters) {
+	if ($verbose_mode) {
+	    my $mcb = get_meter_common_block($c,$meter);
+	    print "METER (#".$meter."):\n";
+	    print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
+	    print "            Option: $mcb->{C_Option}\n";
+	    print "  Firmware version: $mcb->{C_Version}\n";
+	    print "     Serial Number: $mcb->{C_SerialNumber}\n";
+	    print Dumper($mcb) if ($debug_mode);
+	    print "\n";
+	}
 
-  my $mmb = get_meter_model_block($c,$meter);
-  $m_e = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
-  $m_i = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
-  my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
-  my $m_f = scale_value($mmb->{M_AC_Freq},$mmb->{M_AC_Freq_SF});
-  my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
-  my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
-  my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
-  my $m_pf = scale_value($mmb->{M_AC_PF}/100,$mmb->{M_AC_PF_SF});
+	my $mmb = get_meter_model_block($c,$meter);
+	$m_e[$mcount] = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
+	$m_i[$mcount] = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
+	my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
+	my $m_f = scale_value($mmb->{M_AC_Freq},$mmb->{M_AC_Freq_SF});
+	my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
+	my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
+	my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
+	my $m_pf = scale_value($mmb->{M_AC_PF}/100,$mmb->{M_AC_PF_SF});
 
-  if ($verbose_mode) {
-    printf("   Exported Energy: %12.3f kWh\n",$m_e/1000);
-    printf("   Imported Energy: %12.3f kWh\n",$m_i/1000);
-    printf("        Real Power: %12.0f W\n",$m_p);
-    printf("    Apparent Power: %12.0f VA\n",$m_pa);
-    printf("      Power Factor: %12.2f\n",$m_pf);
-    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
-    printf("      Current (AC): %12.2f A\n",$m_c);
-    print Dumper($mmb) if ($debug_mode);
-    print "\n";
-  }
+	if ($verbose_mode) {
+	    printf("   Exported Energy: %12.3f kWh\n",$m_e[$mcount]/1000);
+	    printf("   Imported Energy: %12.3f kWh\n",$m_i[$mcount]/1000);
+	    printf("        Real Power: %12.0f W\n",$m_p);
+	    printf("    Apparent Power: %12.0f VA\n",$m_pa);
+	    printf("      Power Factor: %12.2f\n",$m_pf);
+	    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
+	    printf("      Current (AC): %12.2f A\n",$m_c);
+	    print Dumper($mmb) if ($debug_mode);
+	    print "\n";
+	}
+
+	$mcount++;
+    }
 }
 
 
-
 unless ($verbose_mode) {
-    print("timestamp,status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy,imporoted_energy\n") if ($debug_mode);
+    print("timestamp,status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy_m1,imporoted_energy_m1,exported_energy_m2,imported_energy_m2\n") if ($debug_mode);
 
     if ($numeric_mode) {
 	$status=$mb->{I_Status};
@@ -473,15 +494,17 @@ unless ($verbose_mode) {
 	       "\t\"temperature\": %.2f,\n" .
 	       "\t\"exported_energy\": %d,\n" .
 	       "\t\"imported_energy\": %d\n" .
+	       "\t\"exported_energy_m2\": %d,\n" .
+	       "\t\"imported_energy_m2\": %d\n" .
 	       "}\n",
 	       $tstamp,$status,$ac_power,$dc_power,$wh,
 	       $ac_v,$ac_i,$dc_v,$dc_i,
-	       $temp,$m_e,$m_i);
+	       $temp,$m_e[0],$m_i[0],$m_e[1],$m_i[1]);
     } else {
-	printf("%s,%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n",
+	printf("%s,%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d\n",
 	       $tstamp,$status,$ac_power,$dc_power,$wh,
 	       $ac_v,$ac_i,$dc_v,$dc_i,
-	       $temp,$m_e,$m_i);
+	       $temp,$m_e[0],$m_i[0],$m_e[1],$m_i[1]);
     }
 }
 
