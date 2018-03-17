@@ -319,6 +319,16 @@ sub scale_value(**) {
 }
 
 
+sub dump_hash(*) {
+    my ($href) = @_;
+
+    my $tmp = Dumper($href);
+    $tmp =~ s/^.*?{//;
+    $tmp =~ s/};\s*$//;
+    print $tmp;
+}
+
+
 ###################################################################################
 # main program
 
@@ -390,7 +400,7 @@ if ($verbose_mode) {
   print "             Model: $cb->{C_Manufacturer} $cb->{C_Model}\n";
   print "  Firmware version: $fw_ver\n";
   print "     Serial Number: $cb->{C_SerialNumber}\n";
-  print Dumper($cb) if ($debug_mode);
+  dump_hash($cb) if ($debug_mode);
   print "\n";
 }
 
@@ -420,7 +430,7 @@ if ($verbose_mode) {
   printf("      Voltage (DC): %12.2f V\n",$dc_v);
   printf("      Current (DC): %12.2f A\n",$dc_i);
   printf("       Temperature: %12.2f C (heatsink)\n",$temp);
-  print Dumper($mb) if ($debug_mode);
+  dump_hash($mb) if ($debug_mode);
   print "\n";
 }
 
@@ -437,7 +447,7 @@ if (@meters > 0) {
 	    print "            Option: $mcb->{C_Option}\n";
 	    print "  Firmware version: $mcb->{C_Version}\n";
 	    print "     Serial Number: $mcb->{C_SerialNumber}\n";
-	    print Dumper($mcb) if ($debug_mode);
+	    dump_hash($mcb) if ($debug_mode);
 	    print "\n";
 	}
 
@@ -459,7 +469,7 @@ if (@meters > 0) {
 	    printf("      Power Factor: %12.2f\n",$m_pf);
 	    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
 	    printf("      Current (AC): %12.2f A\n",$m_c);
-	    print Dumper($mmb) if ($debug_mode);
+	    dump_hash($mmb) if ($debug_mode);
 	    print "\n";
 	}
 
