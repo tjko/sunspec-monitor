@@ -51,6 +51,7 @@ Options:
  --json, -j                    Output in JSON (instead of CSV) format
  --timeout=<sec>, -t <sec>     Timeout (default 10)
  --verbose, -v                 Verbose mode
+ --debug, -d                   Debug mode (dump raw Sunspec register values)
 ```
 
 

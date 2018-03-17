@@ -362,7 +362,7 @@ unless ($host) {
     " --numeric, -n                 Numeric output mode (time, status)\n",
     " --json, -j                    Output in JSON (instead of CSV) format\n",
     " --timeout=<sec>, -t <sec>     Timeout (default $TIMEOUT)\n",
-    " --verbose, -v                 Verbose mode\n\n";
+    " --verbose, -v                 Verbose mode\n",
     " --debug, -d                   Debug mode\n\n";
   exit(1);
 }
