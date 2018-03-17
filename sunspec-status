@@ -322,6 +322,8 @@ sub scale_value(**) {
 ###################################################################################
 # main program
 
+$Data::Dumper::Sortkeys=1;
+
 my $verbose_mode = 0;
 my $debug_mode = 0;
 my $numeric_mode = 0;
