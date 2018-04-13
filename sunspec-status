@@ -505,7 +505,7 @@ unless ($verbose_mode) {
 	       "\t\"dc_current\": %.2f,\n" .
 	       "\t\"temperature\": %.2f,\n" .
 	       "\t\"exported_energy\": %d,\n" .
-	       "\t\"imported_energy\": %d\n" .
+	       "\t\"imported_energy\": %d,\n" .
 	       "\t\"exported_energy_m2\": %d,\n" .
 	       "\t\"imported_energy_m2\": %d\n" .
 	       "}\n",
