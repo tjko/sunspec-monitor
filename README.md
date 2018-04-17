@@ -16,6 +16,7 @@ SolarEdge|SE11400|3.1968|often first connection fails, but subsequent connection
 SolarEdge|SE11400|3.2180|works ok
 SolarEdge|SE3500|3.2173|often first connection fails, but subseuqent connetions work
 SolarEdge|SE3500|3.2186|works ok
+SolarEdge|SE3680|3.2228|works ok
 
 
 This script should work with any inverter that supports Modbus TCP and Sunspec standard...
