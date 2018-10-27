@@ -63,6 +63,8 @@ Options:
  --port=<port>, -p <port>      Use port (default 502)
  --meter=<meter>, -m <meter>   Query meter (default 1) 
                                (meter = 1..3  or 0 = no meter)
+ --phase=<phase>, -P <phase>   Report PF for single phase only
+                                (phase = A,B,C)
  --numeric, -n                 Numeric output mode (time, status)
  --json, -j                    Output in JSON (instead of CSV) format
  --timeout=<sec>, -t <sec>     Timeout (default 10)

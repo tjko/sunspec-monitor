@@ -338,6 +338,8 @@ my $verbose_mode = 0;
 my $debug_mode = 0;
 my $numeric_mode = 0;
 my $json_mode = 0;
+my $phase;
+my $phase_tag;
 my $meter;
 my $port = $PORT;
 my $timeout = $TIMEOUT;
@@ -346,6 +348,7 @@ my @meters;
 GetOptions("verbose|v" => \$verbose_mode,
 	   "debug|d" => \$debug_mode,
 	   "port|p=s" => \$port,
+	   "phase|P=s" => \$phase,
 	   "meter|m=s" => \$meter,
 	   "numeric|n" => \$numeric_mode,
 	   "json|j" => \$json_mode,
@@ -359,6 +362,8 @@ unless ($host) {
     " --port=<port>, -p <port>      Use port (default $PORT)\n",
     " --meter=<meter>, -m <meter>   Query meter (default 1) \n",
     "                               (meter = 1..3  or 0 = no meter)\n",
+    " --phase=<phase>, -P <phase>   Report single phase (default is average)\n",
+    "                               (phase = A,B,C)\n",
     " --numeric, -n                 Numeric output mode (time, status)\n",
     " --json, -j                    Output in JSON (instead of CSV) format\n",
     " --timeout=<sec>, -t <sec>     Timeout (default $TIMEOUT)\n",
@@ -385,6 +390,11 @@ if ($meter ne '') {
     push @meters, 1;
 }
 
+die("invalid phase ($phase) specified") unless ($phase =~ /^(A|B|C|)$/);
+if ($phase) {
+    $phase_tag='_'.$phase;
+    $phase=" (Phase $phase)";
+}
 
 
 my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
@@ -418,6 +428,7 @@ my $ac_i = scale_value($mb->{I_AC_Current},$mb->{I_AC_Current_SF});
 my $dc_i = scale_value($mb->{I_DC_Current},$mb->{I_DC_Current_SF});
 my $ac_f = scale_value($mb->{I_AC_Frequency},$mb->{I_AC_Frequency_SF});
 my $wh = scale_value($mb->{I_AC_Energy_WH},$mb->{I_AC_Energy_WH_SF});
+
 
 if ($verbose_mode) {
   print  "            Status: $status\n\n";
@@ -459,14 +470,14 @@ if (@meters > 0) {
 	my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
 	my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
 	my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
-	my $m_pf = scale_value($mmb->{M_AC_PF}/100,$mmb->{M_AC_PF_SF});
+	my $m_pf = scale_value($mmb->{'M_AC_PF'.$phase_tag}/100.0,$mmb->{M_AC_PF_SF});
 
 	if ($verbose_mode) {
 	    printf("   Exported Energy: %12.3f kWh\n",$m_e[$mcount]/1000);
 	    printf("   Imported Energy: %12.3f kWh\n",$m_i[$mcount]/1000);
 	    printf("        Real Power: %12.0f W\n",$m_p);
 	    printf("    Apparent Power: %12.0f VA\n",$m_pa);
-	    printf("      Power Factor: %12.2f\n",$m_pf);
+	    printf("      Power Factor: %12.3f%s\n",$m_pf,$phase);
 	    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
 	    printf("      Current (AC): %12.2f A\n",$m_c);
 	    dump_hash($mmb) if ($debug_mode);
