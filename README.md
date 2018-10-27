@@ -8,15 +8,30 @@ Included tools:
 * sunspec-status
 
 
-Tested to work with following Inverters:
+Known to work with following Inverters:
 
-Manufacturer|Model|Firmware Version|Notes
-------------|-----|----------------|-----
-SolarEdge|SE11400|3.1968|often first connection fails, but subsequent connections work
-SolarEdge|SE11400|3.2180|works ok
-SolarEdge|SE3500|3.2173|often first connection fails, but subseuqent connetions work
-SolarEdge|SE3500|3.2186|works ok
-SolarEdge|SE3680|3.2228|works ok
+Manufacturer|Model   |Firmware Version|Notes
+------------|--------|----------------|-----
+SolarEdge   |SE11400 |3.2251          |works ok
+SolarEdge   |SE11400 |3.2180          |works ok, intermitted inverter error status reported if multiple meters connected
+SolarEdge   |SE11400 |3.1968          |often first connection fails, but subsequent connections work
+SolarEdge   |SE7600  |3.2305          |works ok
+SolarEdge   |SE6000  |3.2251          |works ok
+SolarEdge   |SE3680  |3.2228          |works ok
+SolarEdge   |SE3680  |3.2016          |works ok
+SolarEdge   |SE3500  |3.2186          |works ok
+SolarEdge   |SE3500  |3.2173          |often first connection fails, but subseuqent connetions work
+
+
+Known to work with following Meters:
+
+Manufacturer|Model          |Firmware Version|Notes
+------------|---------------|----------------|-----
+WattNode    |RWND-3D-240-MB |25              |works ok
+WattNode    |WNC-3D-240-MB  |24              |doesnt appear to work (as "Export+Import" meter) ?
+WattNode    |WNC-3Y-400-MB  |24              |doesnt appear to work (as "Export+Import" meter) ?
+WattNode    |WND-3Y-400-MB  |25              |doesnt appear to work (as "Export+Import" meter) ?
+
 
 
 This script should work with any inverter that supports Modbus TCP and Sunspec standard...
