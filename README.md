@@ -29,8 +29,9 @@ Manufacturer|Model          |Firmware Version|Notes
 ------------|---------------|----------------|-----
 WattNode    |RWND-3D-240-MB |25              |works ok
 WattNode    |WNC-3D-240-MB  |24              |doesnt appear to work (as "Export+Import" meter) ?
-WattNode    |WNC-3Y-400-MB  |24              |doesnt appear to work (as "Export+Import" meter) ?
+WattNode    |WNC-3Y-400-MB  |24              |works ok (for help see #4)
 WattNode    |WND-3Y-400-MB  |25              |doesnt appear to work (as "Export+Import" meter) ?
+
 
 
 
