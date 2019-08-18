@@ -55,22 +55,28 @@ to query it as well.  Default is to query meter in address 1. To query also seco
 option *-m 1,2* can be used.
 If no meter is installed *-m 0* can be used to skip querying any meter.
 
+StorEdge battery status can be also reported if one is installed. To enable display of battery
+status option *-b* can be used. This support was contributed by Ilker Deligoz.
+
+
 ### Syntax
 
 ```
 syntax: sunspec-status [options] <host>
 
 Options:
- --port=<port>, -p <port>      Use port (default 502)
- --meter=<meter>, -m <meter>   Query meter (default 1) 
-                               (meter = 1..3  or 0 = no meter)
- --phase=<phase>, -P <phase>   Report PF for single phase only
-                                (phase = A,B,C)
- --numeric, -n                 Numeric output mode (time, status)
- --json, -j                    Output in JSON (instead of CSV) format
- --timeout=<sec>, -t <sec>     Timeout (default 10)
- --verbose, -v                 Verbose mode
- --debug, -d                   Debug mode (dump raw Sunspec register values)
+ --port=<port>, -p <port>            Use port (default 502)
+ --meter=<meter>, -m <meter>         Query meter (default 1) 
+                                      (meter = 1..3  or 0 = no meter)
+ --phase=<phase>, -P <phase>         Report PF for single phase only
+                                      (phase = A,B,C)
+ --battery, -b                       Query battery status
+ --numeric, -n                       Numeric output mode (time, status)
+ --json, -j                          Output in JSON (instead of CSV) format
+ --timeout=<sec>, -t <sec>           Timeout (default 10)
+ --output=<filename>, -f <filename>  Append results to a file
+ --verbose, -v                       Verbose mode
+ --debug, -d                         Debug mode (dump raw Sunspec register values)
 ```
 
 
