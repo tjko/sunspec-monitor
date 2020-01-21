@@ -193,8 +193,8 @@ sub get_inverter_model_block(*) {
     $mb->{I_Event_3_Vendor} = unpack("N",substr($data,96,4));
     $mb->{I_Event_4_Vendor} = unpack("N",substr($data,100,4));
 
-    die("Non SunSpec Model block received (not SunSpec compliant device?)")
-    	     unless ($mb->{C_SunSpec_Length} == 50);
+    warn("Non SunSpec Model block received (not SunSpec compliant device?)")
+	unless ($mb->{C_SunSpec_Length} >= 50);
 
     return $mb;
 }
@@ -237,8 +237,8 @@ sub get_meter_common_block(**) {
     $cb->{C_SerialNumber} =~ s/\0+$//;
 
 
-    die("Non SunSpec Meter Common block received (not SunSpec compliant device?)")
-    	     unless ($cb->{C_SunSpec_Length} == 65);
+    warn("Non SunSpec Meter Common block received (not SunSpec compliant device?)")
+	unless ($cb->{C_SunSpec_Length} >= 65);
 
     return $cb;
 }
