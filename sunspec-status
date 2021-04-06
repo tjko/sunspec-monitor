@@ -29,6 +29,8 @@ use strict;
 
 my $TIMEOUT = 10;
 my $PORT = 502;
+my $ADDRESS = 1;
+my $address = $ADDRESS;
 
 my $SUNSPEC_I_COMMON_BLOCK_START = 40000;
 my $SUNSPEC_I_MODEL_BLOCK_START = 40069;
@@ -97,7 +99,7 @@ sub float32(*){
 sub get_inverter_common_block(*) {
     my ($ctx) = @_;
 
-    my $req = $ctx->read_holding_registers(unit=>1,
+    my $req = $ctx->read_holding_registers(unit=>$address,
 					   address=>$SUNSPEC_I_COMMON_BLOCK_START,
 					   quantity=>69);
     $ctx->send_request($req) || die("send_request(): failed");
@@ -136,7 +138,7 @@ sub get_inverter_common_block(*) {
 sub get_inverter_model_block(*) {
     my ($ctx) = @_;
 
-    my $req = $ctx->read_holding_registers(unit=>1,
+    my $req = $ctx->read_holding_registers(unit=>$address,
 					   address=>$SUNSPEC_I_MODEL_BLOCK_START,
 					   quantity=>52);
     $ctx->send_request($req) || die("send_request(): failed");
@@ -211,7 +213,7 @@ sub get_meter_common_block(**) {
     $meter=3 if ($meter > 3);
     my $offset = ($meter - 1) * 174;
 
-    my $req = $ctx->read_holding_registers(unit=>1,
+    my $req = $ctx->read_holding_registers(unit=>$address,
 					   address=>$SUNSPEC_M_COMMON_BLOCK_START + $offset,
 					   quantity=>65);
     $ctx->send_request($req) || die("send_request(): failed");
@@ -255,7 +257,7 @@ sub get_meter_model_block(**) {
     $meter=3 if ($meter > 3);
     my $offset = ($meter - 1) * 174;
 
-    my $req = $ctx->read_holding_registers(unit=>1,
+    my $req = $ctx->read_holding_registers(unit=>$address,
 					   address=>$SUNSPEC_M_MODEL_BLOCK_START + $offset,
 					   quantity=>107);
     $ctx->send_request($req) || die("send_request(): failed");
@@ -355,7 +357,7 @@ sub get_meter_model_block(**) {
 sub get_battery_common_block(*) {
     my ($ctx) = @_;
     
-    my $req = $ctx->read_holding_registers(unit=>1, address=>$SE_I_BATTERY_BLOCK_START, quantity=>65); #132
+    my $req = $ctx->read_holding_registers(unit=>$address, address=>$SE_I_BATTERY_BLOCK_START, quantity=>65); #132
     $ctx->send_request($req) || die("send_request(): failed");
     my $adu = $ctx->receive_response();
     die("Read of Battery Common block registers failed (device does not support SunSpec?)")
@@ -371,7 +373,7 @@ sub get_battery_common_block(*) {
     $b_cb->{Serial_Number}                  = unpack("A*",substr($data,48*2,16*2));
     $b_cb->{Device_ID}                      = unpack("n",substr($data,64*2,1*2 ));
 
-    $req = $ctx->read_holding_registers(unit=>1, address=>$SE_I_BATTERY_BLOCK_START+65+1, quantity=>10); #132
+    $req = $ctx->read_holding_registers(unit=>$address, address=>$SE_I_BATTERY_BLOCK_START+65+1, quantity=>10); #132
     $ctx->send_request($req) || die("send_request(): failed");
     $adu = $ctx->receive_response();
     die("Read of Battery Common block registers failed (device does not support SunSpec?)")
@@ -389,7 +391,7 @@ sub get_battery_common_block(*) {
     $b_cb->{Max_Discharge_Peak_Power}       = float32(substr($data,8*2,2*2 ));
 
 
-    $req = $ctx->read_holding_registers(unit=>1,
+    $req = $ctx->read_holding_registers(unit=>$address,
 					address=>$SE_I_BATTERY_BLOCK_START+76+32,
 					quantity=>30);
     $ctx->send_request($req) || die("send_request(): failed");
@@ -440,6 +442,7 @@ GetOptions("verbose|v" => \$verbose_mode,
 	   "battery|b" => \$battery,
 	   "debug|d" => \$debug_mode,
 	   "port|p=s" => \$port,
+	   "address|a=s" => \$address,
 	   "phase|P=s" => \$phase,
 	   "meter|m=s" => \$meter,
 	   "numeric|n" => \$numeric_mode,
@@ -453,6 +456,7 @@ unless ($host) {
   print STDERR "syntax: $0 [options] <host>\n\n",
     "Options:\n",
     " --port=<port>, -p <port>            Use port (default $PORT)\n",
+    " --address=<addr>, -a <addr>         Modbus Address (default $ADDRESS)\n",
     " --meter=<meter>, -m <meter>         Query meter (default 1) \n",
     "                                     (meter = 1..3  or 0 = no meter)\n",
     " --phase=<phase>, -P <phase>         Report single phase (default is average)\n",
