@@ -40,6 +40,8 @@ This script should work with any inverter that supports Modbus TCP and Sunspec s
 
 ## Requirements
 
+- [Net::Server](https://metacpan.org/pod/Net::Server) module
+- [Device::Modbus](https://metacpan.org/pod/Device::Modbus) module
 - [Device::Modbus::TCP](https://github.com/jfraire/Device-Modbus-TCP) module
 
 
@@ -66,6 +68,7 @@ syntax: sunspec-status [options] <host>
 
 Options:
  --port=<port>, -p <port>            Use port (default 502)
+ --address=<addr>, -a <addr>         Modbus Address (default 1)
  --meter=<meter>, -m <meter>         Query meter (default 1) 
                                       (meter = 1..3  or 0 = no meter)
  --phase=<phase>, -P <phase>         Report PF for single phase only
