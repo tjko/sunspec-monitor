@@ -16,6 +16,7 @@ SolarEdge   |SE11400 |3.2251          |works ok
 SolarEdge   |SE11400 |3.2180          |works ok, intermitted inverter error status reported if multiple meters connected
 SolarEdge   |SE11400 |3.1968          |often first connection fails, but subsequent connections work
 SolarEdge   |SE7600  |3.2305          |works ok
+SolarEdge   |SE7K    |3.2251          |works ok, may need "-m 0"
 SolarEdge   |SE6000  |3.2251          |works ok
 SolarEdge   |SE3680  |3.2228          |works ok
 SolarEdge   |SE3680  |3.2016          |works ok
