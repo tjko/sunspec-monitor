@@ -26,7 +26,6 @@ use Device::Modbus::TCP::Client;
 use Getopt::Long;
 use strict;
 
-
 my $TIMEOUT = 10;
 my $PORT = 502;
 my $ADDRESS = 1;
@@ -36,394 +35,325 @@ my $SUNSPEC_I_COMMON_BLOCK_START = 40000;
 my $SUNSPEC_I_MODEL_BLOCK_START = 40069;
 my $SUNSPEC_M_COMMON_BLOCK_START = 40121;
 my $SUNSPEC_M_MODEL_BLOCK_START = 40188;
-my $SE_I_BATTERY_BLOCK_START = 57600;
+my $SE_I_BATTERY_BLOCK_START_B1 = 57600;  # Battery 1
+my $SE_I_BATTERY_BLOCK_START_B2 = 57856;  # Battery 2 (updated to correct address)
 
 my %I_STATUS = ( 
-    0=>'Unknown', 
-    1=>'OFF', 
-    2=>'SLEEPING',
-    3=>'STARTING',
-    4=>'ON (MPPT)',
-    5=>'THROTTLED',
-    6=>'SHUTTING DOWN',
-    7=>'FAULT',
-    8=>'STANDBY'
-    );
-
-
+    0 => 'Unknown', 
+    1 => 'OFF', 
+    2 => 'SLEEPING',
+    3 => 'STARTING',
+    4 => 'ON (MPPT)',
+    5 => 'THROTTLED',
+    6 => 'SHUTTING DOWN',
+    7 => 'FAULT',
+    8 => 'STANDBY'
+);
 
 # scale_value - scale input value using scale factor (SF)
-#
 sub scale_value(**) {
-  my ($val,$sf) = @_;
-
-  return $val * (10 ** $sf);
+    my ($val, $sf) = @_;
+    return $val * (10 ** $sf);
 }
 
-
-# dump_hash - print has contents to stdout
-#
+# dump_hash - print hash contents to stdout
 sub dump_hash(*) {
     my ($href) = @_;
-
     my $tmp = Dumper($href);
     $tmp =~ s/^.*?{//;
     $tmp =~ s/};\s*$//;
     print $tmp;
 }
 
-
 # float32 - unpack floating point number
-#
-sub float32(*){
+sub float32(*) {
     my ($data) = @_;
+    my ($f_val) = 0.0;
 
-    my ($f_val)  = 0.0;
-
-    if (unpack("N",$data) != 0) {
-	my $bin_str = substr(unpack("B32",$data),16,16).substr(unpack("B32",$data),0,16);
-	my $f_sgn  = substr($bin_str,0,1) == "1" ? -1 : 1;
-	my $f_exp  = oct("0b".substr($bin_str,1,8));
-	my $f_man  = 1+oct("0b".substr($bin_str,9,23))*(2**-23);
-	$f_val  = $f_sgn * (2**($f_exp-127)) * $f_man;
+    if (unpack("N", $data) != 0) {
+        my $bin_str = substr(unpack("B32", $data), 16, 16) . substr(unpack("B32", $data), 0, 16);
+        my $f_sgn = substr($bin_str, 0, 1) == "1" ? -1 : 1;
+        my $f_exp = oct("0b" . substr($bin_str, 1, 8));
+        my $f_man = 1 + oct("0b" . substr($bin_str, 9, 23)) * (2**-23);
+        $f_val = $f_sgn * (2**($f_exp - 127)) * $f_man;
     }
-
     return $f_val;
 }
 
-
-
-# get_inverter_common_block - return a hash containing Sunspec
-#                             Common Block values
-#
+# get_inverter_common_block - return a hash containing SunSpec Common Block values
 sub get_inverter_common_block(*) {
     my ($ctx) = @_;
-
-    my $req = $ctx->read_holding_registers(unit=>$address,
-					   address=>$SUNSPEC_I_COMMON_BLOCK_START,
-					   quantity=>69);
+    my $req = $ctx->read_holding_registers(unit => $address, address => $SUNSPEC_I_COMMON_BLOCK_START, quantity => 69);
     $ctx->send_request($req) || die("send_request(): failed");
-
     my $adu = $ctx->receive_response();
-    die("Read of Common block registers failed (device does not support SunSpec?)")
-    	unless ($adu->success);
+    die("Read of Common block registers failed (device does not support SunSpec?)") unless ($adu->success);
 
-
-    my $data = pack("n*",@{$adu->values});
+    my $data = pack("n*", @{$adu->values});
     my $cb;
-    $cb->{C_SunSpec_ID} = unpack("a4",substr($data,0,4));
-    $cb->{C_SunSpec_DID} = unpack("n",substr($data,4,2));
-    $cb->{C_SunSpec_Length} = unpack("n",substr($data,6,2));
-    $cb->{C_Manufacturer} = unpack("a*",substr($data,8,32));
+    $cb->{C_SunSpec_ID} = unpack("a4", substr($data, 0, 4));
+    $cb->{C_SunSpec_DID} = unpack("n", substr($data, 4, 2));
+    $cb->{C_SunSpec_Length} = unpack("n", substr($data, 6, 2));
+    $cb->{C_Manufacturer} = unpack("a*", substr($data, 8, 32));
     $cb->{C_Manufacturer} =~ s/\0+$//; 
-    $cb->{C_Model} = unpack("a*",substr($data,40,32));
+    $cb->{C_Model} = unpack("a*", substr($data, 40, 32));
     $cb->{C_Model} =~ s/\0+$//; 
-    $cb->{C_Version} = unpack("a*",substr($data,88,16));
+    $cb->{C_Version} = unpack("a*", substr($data, 88, 16));
     $cb->{C_Version} =~ s/\0+$//; 
-    $cb->{C_SerialNumber} = unpack("a*",substr($data,104,32));
+    $cb->{C_SerialNumber} = unpack("a*", substr($data, 104, 32));
     $cb->{C_SerialNumber} =~ s/\0+$//; 
-    $cb->{C_DeviceAddress} = unpack("n",substr($data,136,2));
+    $cb->{C_DeviceAddress} = unpack("n", substr($data, 136, 2));
 
-    
     die("Non SunSpec common block received (not SunSpec compliant device?)")
-    	     unless ($cb->{C_SunSpec_ID} eq "SunS" && $cb->{C_SunSpec_DID} == 1);
-
+        unless ($cb->{C_SunSpec_ID} eq "SunS" && $cb->{C_SunSpec_DID} == 1);
     return $cb;
 }
 
-
-# get_inverter_model_block - return a hash containing Sunspec Inverter
-#                            Model Block values
-#
+# get_inverter_model_block - return a hash containing SunSpec Inverter Model Block values
 sub get_inverter_model_block(*) {
     my ($ctx) = @_;
-
-    my $req = $ctx->read_holding_registers(unit=>$address,
-					   address=>$SUNSPEC_I_MODEL_BLOCK_START,
-					   quantity=>52);
+    my $req = $ctx->read_holding_registers(unit => $address, address => $SUNSPEC_I_MODEL_BLOCK_START, quantity => 52);
     $ctx->send_request($req) || die("send_request(): failed");
-
     my $adu = $ctx->receive_response();
-    die("Read of Inverter Model block registers failed (device does not support SunSpec?)")
-    	unless ($adu->success);
+    die("Read of Inverter Model block registers failed (device does not support SunSpec?)") unless ($adu->success);
 
-
-    my $data = pack("n*",@{$adu->values});
+    my $data = pack("n*", @{$adu->values});
     my $mb;
-    $mb->{C_SunSpec_DID} = unpack("n",substr($data,0,2));
-    $mb->{C_SunSpec_Length} = unpack("n",substr($data,2,2));
-    $mb->{I_AC_Current} = unpack("n",substr($data,4,2));
-    $mb->{I_AC_CurrentA} = unpack("n",substr($data,6,2));
-    $mb->{I_AC_CurrentB} = unpack("n",substr($data,8,2));
-    $mb->{I_AC_CurrentC} = unpack("n",substr($data,10,2));
-    $mb->{I_AC_Current_SF} = unpack("n!",substr($data,12,2));
-    $mb->{I_AC_VoltageAB} = unpack("n",substr($data,14,2));
-    $mb->{I_AC_VoltageBC} = unpack("n",substr($data,16,2));
-    $mb->{I_AC_VoltageCA} = unpack("n",substr($data,18,2));
-    $mb->{I_AC_VoltageAN} = unpack("n",substr($data,20,2));
-    $mb->{I_AC_VoltageBN} = unpack("n",substr($data,22,2));
-    $mb->{I_AC_VoltageCN} = unpack("n",substr($data,24,2));
-    $mb->{I_AC_Voltage_SF} = unpack("n!",substr($data,26,2));
-    $mb->{I_AC_Power} = unpack("n!",substr($data,28,2));
-    $mb->{I_AC_Power_SF} = unpack("n!",substr($data,30,2));
-    $mb->{I_AC_Frequency} = unpack("n",substr($data,32,2));
-    $mb->{I_AC_Frequency_SF} = unpack("n!",substr($data,34,2));
-    $mb->{I_AC_VA} = unpack("n!",substr($data,36,2));
-    $mb->{I_AC_VA_SF} = unpack("n!",substr($data,38,2));
-    $mb->{I_AC_VAR} = unpack("n!",substr($data,40,2));
-    $mb->{I_AC_VAR_SF} = unpack("n!",substr($data,42,2));
-    $mb->{I_AC_PF} = unpack("n!",substr($data,44,2));
-    $mb->{I_AC_PF_SF} = unpack("n!",substr($data,46,2));
-    $mb->{I_AC_Energy_WH} = unpack("N",substr($data,48,4));
-    $mb->{I_AC_Energy_WH_SF} = unpack("n!",substr($data,52,2));
-    $mb->{I_DC_Current} = unpack("n",substr($data,54,2));
-    $mb->{I_DC_Current_SF} = unpack("n!",substr($data,56,2));
-    $mb->{I_DC_Voltage} = unpack("n",substr($data,58,2));
-    $mb->{I_DC_Voltage_SF} = unpack("n!",substr($data,60,2));
-    $mb->{I_DC_Power} = unpack("n!",substr($data,62,2));
-    $mb->{I_DC_Power_SF} = unpack("n!",substr($data,64,2));
-    # 40103 unused
-    $mb->{I_Temp_Sink} = unpack("n!",substr($data,68,2));
-    # 40105-40106 unused
-    $mb->{I_Temp_Sink_SF} = unpack("n!",substr($data,74,2));
-    $mb->{I_Status} = unpack("n",substr($data,76,2));
-    $mb->{I_Status_Vendor} = unpack("n",substr($data,78,2));
-    $mb->{I_Event_1} = unpack("N",substr($data,80,4));
-    $mb->{I_Event_2} = unpack("N",substr($data,84,4));
-    $mb->{I_Event_1_Vendor} = unpack("N",substr($data,88,4));
-    $mb->{I_Event_2_Vendor} = unpack("N",substr($data,92,4));
-    $mb->{I_Event_3_Vendor} = unpack("N",substr($data,96,4));
-    $mb->{I_Event_4_Vendor} = unpack("N",substr($data,100,4));
+    $mb->{C_SunSpec_DID} = unpack("n", substr($data, 0, 2));
+    $mb->{C_SunSpec_Length} = unpack("n", substr($data, 2, 2));
+    $mb->{I_AC_Current} = unpack("n", substr($data, 4, 2));
+    $mb->{I_AC_CurrentA} = unpack("n", substr($data, 6, 2));
+    $mb->{I_AC_CurrentB} = unpack("n", substr($data, 8, 2));
+    $mb->{I_AC_CurrentC} = unpack("n", substr($data, 10, 2));
+    $mb->{I_AC_Current_SF} = unpack("n!", substr($data, 12, 2));
+    $mb->{I_AC_VoltageAB} = unpack("n", substr($data, 14, 2));
+    $mb->{I_AC_VoltageBC} = unpack("n", substr($data, 16, 2));
+    $mb->{I_AC_VoltageCA} = unpack("n", substr($data, 18, 2));
+    $mb->{I_AC_VoltageAN} = unpack("n", substr($data, 20, 2));
+    $mb->{I_AC_VoltageBN} = unpack("n", substr($data, 22, 2));
+    $mb->{I_AC_VoltageCN} = unpack("n", substr($data, 24, 2));
+    $mb->{I_AC_Voltage_SF} = unpack("n!", substr($data, 26, 2));
+    $mb->{I_AC_Power} = unpack("n!", substr($data, 28, 2));
+    $mb->{I_AC_Power_SF} = unpack("n!", substr($data, 30, 2));
+    $mb->{I_AC_Frequency} = unpack("n", substr($data, 32, 2));
+    $mb->{I_AC_Frequency_SF} = unpack("n!", substr($data, 34, 2));
+    $mb->{I_AC_VA} = unpack("n!", substr($data, 36, 2));
+    $mb->{I_AC_VA_SF} = unpack("n!", substr($data, 38, 2));
+    $mb->{I_AC_VAR} = unpack("n!", substr($data, 40, 2));
+    $mb->{I_AC_VAR_SF} = unpack("n!", substr($data, 42, 2));
+    $mb->{I_AC_PF} = unpack("n!", substr($data, 44, 2));
+    $mb->{I_AC_PF_SF} = unpack("n!", substr($data, 46, 2));
+    $mb->{I_AC_Energy_WH} = unpack("N", substr($data, 48, 4));
+    $mb->{I_AC_Energy_WH_SF} = unpack("n!", substr($data, 52, 2));
+    $mb->{I_DC_Current} = unpack("n", substr($data, 54, 2));
+    $mb->{I_DC_Current_SF} = unpack("n!", substr($data, 56, 2));
+    $mb->{I_DC_Voltage} = unpack("n", substr($data, 58, 2));
+    $mb->{I_DC_Voltage_SF} = unpack("n!", substr($data, 60, 2));
+    $mb->{I_DC_Power} = unpack("n!", substr($data, 62, 2));
+    $mb->{I_DC_Power_SF} = unpack("n!", substr($data, 64, 2));
+    $mb->{I_Temp_Sink} = unpack("n!", substr($data, 68, 2));
+    $mb->{I_Temp_Sink_SF} = unpack("n!", substr($data, 74, 2));
+    $mb->{I_Status} = unpack("n", substr($data, 76, 2));
+    $mb->{I_Status_Vendor} = unpack("n", substr($data, 78, 2));
+    $mb->{I_Event_1} = unpack("N", substr($data, 80, 4));
+    $mb->{I_Event_2} = unpack("N", substr($data, 84, 4));
+    $mb->{I_Event_1_Vendor} = unpack("N", substr($data, 88, 4));
+    $mb->{I_Event_2_Vendor} = unpack("N", substr($data, 92, 4));
+    $mb->{I_Event_3_Vendor} = unpack("N", substr($data, 96, 4));
+    $mb->{I_Event_4_Vendor} = unpack("N", substr($data, 100, 4));
 
-    warn("Non SunSpec Model block received (not SunSpec compliant device?)")
-	unless ($mb->{C_SunSpec_Length} >= 50);
-
+    warn("Non SunSpec Model block received (not SunSpec compliant device?)") unless ($mb->{C_SunSpec_Length} >= 50);
     return $mb;
 }
 
-
-# get_meter_common_block - return a has containing Sunspec
-#                          Meter Common block values
-#  meter = 1..3
-#
+# get_meter_common_block - return a hash containing SunSpec Meter Common block values
 sub get_meter_common_block(**) {
-    my ($ctx,$meter) = @_;
-
-    $meter=1 if ($meter < 1);
-    $meter=3 if ($meter > 3);
+    my ($ctx, $meter) = @_;
+    $meter = 1 if ($meter < 1);
+    $meter = 3 if ($meter > 3);
     my $offset = ($meter - 1) * 174;
 
-    my $req = $ctx->read_holding_registers(unit=>$address,
-					   address=>$SUNSPEC_M_COMMON_BLOCK_START + $offset,
-					   quantity=>65);
+    my $req = $ctx->read_holding_registers(unit => $address, address => $SUNSPEC_M_COMMON_BLOCK_START + $offset, quantity => 65);
     $ctx->send_request($req) || die("send_request(): failed");
-
     my $adu = $ctx->receive_response();
-    die("Read of Meter $meter block registers failed (device does not support SunSpec?)")
-    	unless ($adu->success);
+    die("Read of Meter $meter block registers failed (device does not support SunSpec?)") unless ($adu->success);
 
-
-    my $data = pack("n*",@{$adu->values});
+    my $data = pack("n*", @{$adu->values});
     my $cb;
-    $cb->{C_SunSpec_DID} = unpack("n",substr($data,0,2));
-    $cb->{C_SunSpec_Length} = unpack("n",substr($data,2,2));
-    $cb->{C_Manufacturer} = unpack("a*",substr($data,4,32));
+    $cb->{C_SunSpec_DID} = unpack("n", substr($data, 0, 2));
+    $cb->{C_SunSpec_Length} = unpack("n", substr($data, 2, 2));
+    $cb->{C_Manufacturer} = unpack("a*", substr($data, 4, 32));
     $cb->{C_Manufacturer} =~ s/\0+$//;
-    $cb->{C_Model} = unpack("a*",substr($data,36,32));
+    $cb->{C_Model} = unpack("a*", substr($data, 36, 32));
     $cb->{C_Model} =~ s/\0+$//;
-    $cb->{C_Option} = unpack("a*",substr($data,68,16));
+    $cb->{C_Option} = unpack("a*", substr($data, 68, 16));
     $cb->{C_Option} =~ s/\0+$//;
-    $cb->{C_Version} = unpack("a*",substr($data,84,16));
+    $cb->{C_Version} = unpack("a*", substr($data, 84, 16));
     $cb->{C_Version} =~ s/\0+$//;
-    $cb->{C_SerialNumber} = unpack("a*",substr($data,100,32));
+    $cb->{C_SerialNumber} = unpack("a*", substr($data, 100, 32));
     $cb->{C_SerialNumber} =~ s/\0+$//;
 
-
-    warn("Non SunSpec Meter Common block received (not SunSpec compliant device?)")
-	unless ($cb->{C_SunSpec_Length} >= 65);
-
+    warn("Non SunSpec Meter Common block received (not SunSpec compliant device?)") unless ($cb->{C_SunSpec_Length} >= 65);
     return $cb;
 }
 
-
-# get_meter_model_block - return a has containing Sunspec
-#                         Meter Model block values
-#  meter = 1..3
-#
+# get_meter_model_block - return a hash containing SunSpec Meter Model block values
 sub get_meter_model_block(**) {
-    my ($ctx,$meter) = @_;
-
-    $meter=1 if ($meter < 1);
-    $meter=3 if ($meter > 3);
+    my ($ctx, $meter) = @_;
+    $meter = 1 if ($meter < 1);
+    $meter = 3 if ($meter > 3);
     my $offset = ($meter - 1) * 174;
 
-    my $req = $ctx->read_holding_registers(unit=>$address,
-					   address=>$SUNSPEC_M_MODEL_BLOCK_START + $offset,
-					   quantity=>107);
+    my $req = $ctx->read_holding_registers(unit => $address, address => $SUNSPEC_M_MODEL_BLOCK_START + $offset, quantity => 107);
     $ctx->send_request($req) || die("send_request(): failed");
-
     my $adu = $ctx->receive_response();
-    die("Read of Meter $meter block registers failed (device does not support SunSpec?)")
-    	unless ($adu->success);
+    die("Read of Meter $meter block registers failed (device does not support SunSpec?)") unless ($adu->success);
 
-
-    my $data = pack("n*",@{$adu->values});
+    my $data = pack("n*", @{$adu->values});
     my $mb;
-    $mb->{C_SunSpec_DID} = unpack("n",substr($data,0,2));
-    $mb->{C_SunSpec_Length} = unpack("n",substr($data,2,2));
-    $mb->{M_AC_Current} = unpack("n!",substr($data,4,2));
-    $mb->{M_AC_Current_A} = unpack("n!",substr($data,6,2));
-    $mb->{M_AC_Current_B} = unpack("n!",substr($data,8,2));
-    $mb->{M_AC_Current_C} = unpack("n!",substr($data,10,2));
-    $mb->{M_AC_Current_SF} = unpack("n!",substr($data,12,2));
-    $mb->{M_AC_Voltage_LN} = unpack("n!",substr($data,14,2));
-    $mb->{M_AC_Voltage_AN} = unpack("n!",substr($data,16,2));
-    $mb->{M_AC_Voltage_BN} = unpack("n!",substr($data,18,2));
-    $mb->{M_AC_Voltage_CN} = unpack("n!",substr($data,20,2));
-    $mb->{M_AC_Voltage_LL} = unpack("n!",substr($data,22,2));
-    $mb->{M_AC_Voltage_AB} = unpack("n!",substr($data,24,2));
-    $mb->{M_AC_Voltage_BC} = unpack("n!",substr($data,26,2));
-    $mb->{M_AC_Voltage_CA} = unpack("n!",substr($data,28,2));
-    $mb->{M_AC_Voltage_SF} = unpack("n!",substr($data,30,2));
-    $mb->{M_AC_Freq} = unpack("n!",substr($data,32,2));
-    $mb->{M_AC_Freq_SF} = unpack("n!",substr($data,34,2));
-    $mb->{M_AC_Power} = unpack("n!",substr($data,36,2));
-    $mb->{M_AC_Power_A} = unpack("n!",substr($data,38,2));
-    $mb->{M_AC_Power_B} = unpack("n!",substr($data,40,2));
-    $mb->{M_AC_Power_C} = unpack("n!",substr($data,42,2));
-    $mb->{M_AC_Power_SF} = unpack("n!",substr($data,44,2));
-    $mb->{M_AC_VA} = unpack("n!",substr($data,46,2));
-    $mb->{M_AC_VA_A} = unpack("n!",substr($data,48,2));
-    $mb->{M_AC_VA_B} = unpack("n!",substr($data,50,2));
-    $mb->{M_AC_VA_C} = unpack("n!",substr($data,52,2));
-    $mb->{M_AC_VA_SF} = unpack("n!",substr($data,54,2));
-    $mb->{M_AC_VAR} = unpack("n!",substr($data,56,2));
-    $mb->{M_AC_VAR_A} = unpack("n!",substr($data,58,2));
-    $mb->{M_AC_VAR_B} = unpack("n!",substr($data,60,2));
-    $mb->{M_AC_VAR_C} = unpack("n!",substr($data,62,2));
-    $mb->{M_AC_VAR_SF} = unpack("n!",substr($data,64,2));
-    $mb->{M_AC_PF} = unpack("n!",substr($data,66,2));
-    $mb->{M_AC_PF_A} = unpack("n!",substr($data,68,2));
-    $mb->{M_AC_PF_B} = unpack("n!",substr($data,70,2));
-    $mb->{M_AC_PF_C} = unpack("n!",substr($data,72,2));
-    $mb->{M_AC_PF_SF} = unpack("n!",substr($data,74,2));
-    $mb->{M_Exported} = unpack("N",substr($data,76,4));
-    $mb->{M_Exported_A} = unpack("N",substr($data,80,4));
-    $mb->{M_Exported_B} = unpack("N",substr($data,84,4));
-    $mb->{M_Exported_C} = unpack("N",substr($data,88,4));
-    $mb->{M_Imported} = unpack("N",substr($data,92,4));
-    $mb->{M_Imported_A} = unpack("N",substr($data,96,4));
-    $mb->{M_Imported_B} = unpack("N",substr($data,100,4));
-    $mb->{M_Imported_C} = unpack("N",substr($data,104,4));
-    $mb->{M_Energy_W_SF} = unpack("n!",substr($data,108,2));
-    $mb->{M_Exported_VA} = unpack("N",substr($data,110,4));
-    $mb->{M_Exported_VA_A} = unpack("N",substr($data,114,4));
-    $mb->{M_Exported_VA_B} = unpack("N",substr($data,118,4));
-    $mb->{M_Exported_VA_C} = unpack("N",substr($data,122,4));
-    $mb->{M_Imported_VA} = unpack("N",substr($data,126,4));
-    $mb->{M_Imported_VA_A} = unpack("N",substr($data,130,4));
-    $mb->{M_Imported_VA_B} = unpack("N",substr($data,134,4));
-    $mb->{M_Imported_VA_C} = unpack("N",substr($data,138,4));
-    $mb->{M_Energy_VA_SF} = unpack("n!",substr($data,142,2));
-    $mb->{M_Import_VARh_Q1} = unpack("N",substr($data,144,4));
-    $mb->{M_Import_VARh_Q1A} = unpack("N",substr($data,148,4));
-    $mb->{M_Import_VARh_Q1B} = unpack("N",substr($data,152,4));
-    $mb->{M_Import_VARh_Q1C} = unpack("N",substr($data,156,4));
-    $mb->{M_Import_VARh_Q2} = unpack("N",substr($data,160,4));
-    $mb->{M_Import_VARh_Q2A} = unpack("N",substr($data,164,4));
-    $mb->{M_Import_VARh_Q2B} = unpack("N",substr($data,168,4));
-    $mb->{M_Import_VARh_Q2C} = unpack("N",substr($data,172,4));
-    $mb->{M_Import_VARh_Q3} = unpack("N",substr($data,176,4));
-    $mb->{M_Import_VARh_Q3A} = unpack("N",substr($data,180,4));
-    $mb->{M_Import_VARh_Q3B} = unpack("N",substr($data,184,4));
-    $mb->{M_Import_VARh_Q3C} = unpack("N",substr($data,188,4));
-    $mb->{M_Import_VARh_Q4} = unpack("N",substr($data,192,4));
-    $mb->{M_Import_VARh_Q4A} = unpack("N",substr($data,196,4));
-    $mb->{M_Import_VARh_Q4B} = unpack("N",substr($data,200,4));
-    $mb->{M_Import_VARh_Q4C} = unpack("N",substr($data,204,4));
-    $mb->{M_Energy_VAR_SF} = unpack("n!",substr($data,208,2));
-    $mb->{M_Events} = unpack("N",substr($data,210,4));
-
+    $mb->{C_SunSpec_DID} = unpack("n", substr($data, 0, 2));
+    $mb->{C_SunSpec_Length} = unpack("n", substr($data, 2, 2));
+    $mb->{M_AC_Current} = unpack("n!", substr($data, 4, 2));
+    $mb->{M_AC_Current_A} = unpack("n!", substr($data, 6, 2));
+    $mb->{M_AC_Current_B} = unpack("n!", substr($data, 8, 2));
+    $mb->{M_AC_Current_C} = unpack("n!", substr($data, 10, 2));
+    $mb->{M_AC_Current_SF} = unpack("n!", substr($data, 12, 2));
+    $mb->{M_AC_Voltage_LN} = unpack("n!", substr($data, 14, 2));
+    $mb->{M_AC_Voltage_AN} = unpack("n!", substr($data, 16, 2));
+    $mb->{M_AC_Voltage_BN} = unpack("n!", substr($data, 18, 2));
+    $mb->{M_AC_Voltage_CN} = unpack("n!", substr($data, 20, 2));
+    $mb->{M_AC_Voltage_LL} = unpack("n!", substr($data, 22, 2));
+    $mb->{M_AC_Voltage_AB} = unpack("n!", substr($data, 24, 2));
+    $mb->{M_AC_Voltage_BC} = unpack("n!", substr($data, 26, 2));
+    $mb->{M_AC_Voltage_CA} = unpack("n!", substr($data, 28, 2));
+    $mb->{M_AC_Voltage_SF} = unpack("n!", substr($data, 30, 2));
+    $mb->{M_AC_Freq} = unpack("n!", substr($data, 32, 2));
+    $mb->{M_AC_Freq_SF} = unpack("n!", substr($data, 34, 2));
+    $mb->{M_AC_Power} = unpack("n!", substr($data, 36, 2));
+    $mb->{M_AC_Power_A} = unpack("n!", substr($data, 38, 2));
+    $mb->{M_AC_Power_B} = unpack("n!", substr($data, 40, 2));
+    $mb->{M_AC_Power_C} = unpack("n!", substr($data, 42, 2));
+    $mb->{M_AC_Power_SF} = unpack("n!", substr($data, 44, 2));
+    $mb->{M_AC_VA} = unpack("n!", substr($data, 46, 2));
+    $mb->{M_AC_VA_A} = unpack("n!", substr($data, 48, 2));
+    $mb->{M_AC_VA_B} = unpack("n!", substr($data, 50, 2));
+    $mb->{M_AC_VA_C} = unpack("n!", substr($data, 52, 2));
+    $mb->{M_AC_VA_SF} = unpack("n!", substr($data, 54, 2));
+    $mb->{M_AC_VAR} = unpack("n!", substr($data, 56, 2));
+    $mb->{M_AC_VAR_A} = unpack("n!", substr($data, 58, 2));
+    $mb->{M_AC_VAR_B} = unpack("n!", substr($data, 60, 2));
+    $mb->{M_AC_VAR_C} = unpack("n!", substr($data, 62, 2));
+    $mb->{M_AC_VAR_SF} = unpack("n!", substr($data, 64, 2));
+    $mb->{M_AC_PF} = unpack("n!", substr($data, 66, 2));
+    $mb->{M_AC_PF_A} = unpack("n!", substr($data, 68, 2));
+    $mb->{M_AC_PF_B} = unpack("n!", substr($data, 70, 2));
+    $mb->{M_AC_PF_C} = unpack("n!", substr($data, 72, 2));
+    $mb->{M_AC_PF_SF} = unpack("n!", substr($data, 74, 2));
+    $mb->{M_Exported} = unpack("N", substr($data, 76, 4));
+    $mb->{M_Exported_A} = unpack("N", substr($data, 80, 4));
+    $mb->{M_Exported_B} = unpack("N", substr($data, 84, 4));
+    $mb->{M_Exported_C} = unpack("N", substr($data, 88, 4));
+    $mb->{M_Imported} = unpack("N", substr($data, 92, 4));
+    $mb->{M_Imported_A} = unpack("N", substr($data, 96, 4));
+    $mb->{M_Imported_B} = unpack("N", substr($data, 100, 4));
+    $mb->{M_Imported_C} = unpack("N", substr($data, 104, 4));
+    $mb->{M_Energy_W_SF} = unpack("n!", substr($data, 108, 2));
+    $mb->{M_Exported_VA} = unpack("N", substr($data, 110, 4));
+    $mb->{M_Exported_VA_A} = unpack("N", substr($data, 114, 4));
+    $mb->{M_Exported_VA_B} = unpack("N", substr($data, 118, 4));
+    $mb->{M_Exported_VA_C} = unpack("N", substr($data, 122, 4));
+    $mb->{M_Imported_VA} = unpack("N", substr($data, 126, 4));
+    $mb->{M_Imported_VA_A} = unpack("N", substr($data, 130, 4));
+    $mb->{M_Imported_VA_B} = unpack("N", substr($data, 134, 4));
+    $mb->{M_Imported_VA_C} = unpack("N", substr($data, 138, 4));
+    $mb->{M_Energy_VA_SF} = unpack("n!", substr($data, 142, 2));
+    $mb->{M_Import_VARh_Q1} = unpack("N", substr($data, 144, 4));
+    $mb->{M_Import_VARh_Q1A} = unpack("N", substr($data, 148, 4));
+    $mb->{M_Import_VARh_Q1B} = unpack("N", substr($data, 152, 4));
+    $mb->{M_Import_VARh_Q1C} = unpack("N", substr($data, 156, 4));
+    $mb->{M_Import_VARh_Q2} = unpack("N", substr($data, 160, 4));
+    $mb->{M_Import_VARh_Q2A} = unpack("N", substr($data, 164, 4));
+    $mb->{M_Import_VARh_Q2B} = unpack("N", substr($data, 168, 4));
+    $mb->{M_Import_VARh_Q2C} = unpack("N", substr($data, 172, 4));
+    $mb->{M_Import_VARh_Q3} = unpack("N", substr($data, 176, 4));
+    $mb->{M_Import_VARh_Q3A} = unpack("N", substr($data, 180, 4));
+    $mb->{M_Import_VARh_Q3B} = unpack("N", substr($data, 184, 4));
+    $mb->{M_Import_VARh_Q3C} = unpack("N", substr($data, 188, 4));
+    $mb->{M_Import_VARh_Q4} = unpack("N", substr($data, 192, 4));
+    $mb->{M_Import_VARh_Q4A} = unpack("N", substr($data, 196, 4));
+    $mb->{M_Import_VARh_Q4B} = unpack("N", substr($data, 200, 4));
+    $mb->{M_Import_VARh_Q4C} = unpack("N", substr($data, 204, 4));
+    $mb->{M_Energy_VAR_SF} = unpack("n!", substr($data, 208, 2));
+    $mb->{M_Events} = unpack("N", substr($data, 210, 4));
 
     die("Non SunSpec Meter Common block received (not SunSpec compliant device?)")
-    	     unless ($mb->{C_SunSpec_DID} >= 201 && $mb->{C_SunSpec_DID} <= 204);
-
+        unless ($mb->{C_SunSpec_DID} >= 201 && $mb->{C_SunSpec_DID} <= 204);
     return $mb;
 }
 
-
 # get_battery_common_block - return hash containing battery common block values
-#
-sub get_battery_common_block(*) {
-    my ($ctx) = @_;
-    
-    my $req = $ctx->read_holding_registers(unit=>$address, address=>$SE_I_BATTERY_BLOCK_START, quantity=>65); #132
-    $ctx->send_request($req) || die("send_request(): failed");
-    my $adu = $ctx->receive_response();
-    die("Read of Battery Common block registers failed (device does not support SunSpec?)")
-	unless ($adu->success);
+sub get_battery_common_block(**) {
+    my ($ctx, $battery_num) = @_;
+    $battery_num = 1 unless defined $battery_num;  # Default to Battery 1
 
-    my $data = pack("n*",@{$adu->values});
-    my $my_values1 = @{$adu->values};
+    # Calculate starting address based on battery number
+    my $base_address = ($battery_num == 1) ? $SE_I_BATTERY_BLOCK_START_B1 : $SE_I_BATTERY_BLOCK_START_B2;
+
+    my $req = $ctx->read_holding_registers(unit => $address, address => $base_address, quantity => 65);
+    $ctx->send_request($req) || die("send_request(): failed for Battery $battery_num");
+    my $adu = $ctx->receive_response();
+    die("Read of Battery $battery_num Common block registers failed (device does not support SunSpec?)")
+        unless ($adu->success);
+
+    my $data = pack("n*", @{$adu->values});
     my $b_cb;
 
-    $b_cb->{Manufacturer_Name}              = unpack("A*",substr($data,0,16*2));
-    $b_cb->{Model}                          = unpack("A*",substr($data,16*2,16*2));
-    $b_cb->{Firmware_Version}               = unpack("A*",substr($data,32*2,16*2));
-    $b_cb->{Serial_Number}                  = unpack("A*",substr($data,48*2,16*2));
-    $b_cb->{Device_ID}                      = unpack("n",substr($data,64*2,1*2 ));
+    $b_cb->{Manufacturer_Name} = unpack("A*", substr($data, 0, 16*2));
+    $b_cb->{Model} = unpack("A*", substr($data, 16*2, 16*2));
+    $b_cb->{Firmware_Version} = unpack("A*", substr($data, 32*2, 16*2));
+    $b_cb->{Serial_Number} = unpack("A*", substr($data, 48*2, 16*2));
+    $b_cb->{Device_ID} = unpack("n", substr($data, 64*2, 1*2));
 
-    $req = $ctx->read_holding_registers(unit=>$address, address=>$SE_I_BATTERY_BLOCK_START+65+1, quantity=>10); #132
-    $ctx->send_request($req) || die("send_request(): failed");
+    $req = $ctx->read_holding_registers(unit => $address, address => $base_address + 65 + 1, quantity => 10);
+    $ctx->send_request($req) || die("send_request(): failed for Battery $battery_num");
     $adu = $ctx->receive_response();
-    die("Read of Battery Common block registers failed (device does not support SunSpec?)")
-	unless ($adu->success);
+    die("Read of Battery $battery_num Common block registers failed (device does not support SunSpec?)")
+        unless ($adu->success);
 
+    $data = pack("n*", @{$adu->values});
+    $b_cb->{Rated_Energy} = float32(substr($data, 0, 2*2));
+    $b_cb->{Max_Charge_Continues_Power} = float32(substr($data, 2*2, 2*2));
+    $b_cb->{Max_Discharge_Continues_Power} = float32(substr($data, 4*2, 2*2));
+    $b_cb->{Max_Charge_Peak_Power} = float32(substr($data, 6*2, 2*2));
+    $b_cb->{Max_Discharge_Peak_Power} = float32(substr($data, 8*2, 2*2));
 
-    $data = pack("n*",@{$adu->values});
-    my $my_values2 = @{$adu->values};
-
-
-    $b_cb->{Rated_Energy}                   = float32(substr($data,0  ,2*2 ));
-    $b_cb->{Max_Charge_Continues_Power}     = float32(substr($data,2*2,2*2 ));
-    $b_cb->{Max_Discharge_Continues_Power}  = float32(substr($data,4*2,2*2 ));
-    $b_cb->{Max_Charge_Peak_Power}          = float32(substr($data,6*2,2*2 ));
-    $b_cb->{Max_Discharge_Peak_Power}       = float32(substr($data,8*2,2*2 ));
-
-
-    $req = $ctx->read_holding_registers(unit=>$address,
-					address=>$SE_I_BATTERY_BLOCK_START+76+32,
-					quantity=>30);
-    $ctx->send_request($req) || die("send_request(): failed");
+    $req = $ctx->read_holding_registers(unit => $address, address => $base_address + 76 + 32, quantity => 30);
+    $ctx->send_request($req) || die("send_request(): failed for Battery $battery_num");
     $adu = $ctx->receive_response();
-    die("Read of Battery Common block registers failed (device does not support SunSpec?)")
-	unless ($adu->success);
+    die("Read of Battery $battery_num Common block registers failed (device does not support SunSpec?)")
+        unless ($adu->success);
 
-    $data = pack("n*",@{$adu->values});
-
-    $b_cb->{Average_Temperature}            = float32(substr($data,0   ,2*2 ));
-    $b_cb->{Max_Temperature}                = float32(substr($data,2*2 ,2*2 ));
-    $b_cb->{Instantaneous_Voltage}          = float32(substr($data,4*2 ,2*2 ));
-    $b_cb->{Instantaneous_Current}          = float32(substr($data,6*2 ,2*2 ));
-    $b_cb->{Instantaneous_Power}            = float32(substr($data,8*2 ,2*2 ));
-    $b_cb->{Lifetime_Export_Energy_Counter} = unpack("n*",substr($data,10*2,4*2 ));
-    $b_cb->{Lifetime_Import_Energy_Counter} = unpack("n*",substr($data,14*2,4*2 ));
-    $b_cb->{Max_Energy}                     = float32(substr($data,18*2,2*2 ));
-    $b_cb->{Available_Energy}               = float32(substr($data,20*2,2*2 ));
-    $b_cb->{State_of_Health}                = float32(substr($data,22*2,2*2 ));
-    $b_cb->{State_of_Energy}                = float32(substr($data,24*2,2*2 ));
-    $b_cb->{Status}                         = unpack("n*",substr($data,26*2,2*2 ));
-    $b_cb->{Status_Internal}                = unpack("n*",substr($data,28*2,2*2 ));
+    $data = pack("n*", @{$adu->values});
+    $b_cb->{Average_Temperature} = float32(substr($data, 0, 2*2));
+    $b_cb->{Max_Temperature} = float32(substr($data, 2*2, 2*2));
+    $b_cb->{Instantaneous_Voltage} = float32(substr($data, 4*2, 2*2));
+    $b_cb->{Instantaneous_Current} = float32(substr($data, 6*2, 2*2));
+    $b_cb->{Instantaneous_Power} = float32(substr($data, 8*2, 2*2));
+    $b_cb->{Lifetime_Export_Energy_Counter} = unpack("n*", substr($data, 10*2, 4*2));
+    $b_cb->{Lifetime_Import_Energy_Counter} = unpack("n*", substr($data, 14*2, 4*2));
+    $b_cb->{Max_Energy} = float32(substr($data, 18*2, 2*2));
+    $b_cb->{Available_Energy} = float32(substr($data, 20*2, 2*2));
+    $b_cb->{State_of_Health} = float32(substr($data, 22*2, 2*2));
+    $b_cb->{State_of_Energy} = float32(substr($data, 24*2, 2*2));
+    $b_cb->{Status} = unpack("n*", substr($data, 26*2, 2*2));
+    $b_cb->{Status_Internal} = unpack("n*", substr($data, 28*2, 2*2));
 
     return $b_cb;
 }
 
-
-
 ###################################################################################
 # main program
 
-$Data::Dumper::Sortkeys=1;
+$Data::Dumper::Sortkeys = 1;
 
 my $verbose_mode = 0;
 my $debug_mode = 0;
@@ -432,275 +362,293 @@ my $json_mode = 0;
 my $phase;
 my $phase_tag;
 my $meter;
-my $battery = 0;
 my $port = $PORT;
 my $timeout = $TIMEOUT;
 my $outfile;
 my @meters;
+my @batteries;
 
-GetOptions("verbose|v" => \$verbose_mode,
-	   "battery|b" => \$battery,
-	   "debug|d" => \$debug_mode,
-	   "port|p=s" => \$port,
-	   "address|a=s" => \$address,
-	   "phase|P=s" => \$phase,
-	   "meter|m=s" => \$meter,
-	   "numeric|n" => \$numeric_mode,
-	   "json|j" => \$json_mode,
-	   "timeout|t=s" => \$timeout,
-           "output|o=s" => \$outfile);
+GetOptions(
+    "verbose|v" => \$verbose_mode,
+    "battery|b=s" => sub { @batteries = split(/\s*,\s*/, $_[1]); },  # Parse comma-separated list
+    "debug|d" => \$debug_mode,
+    "port|p=s" => \$port,
+    "address|a=s" => \$address,
+    "phase|P=s" => \$phase,  # Changed from "phase|P=s" to "phase|P=s" to avoid -p conflict
+    "meter|m=s" => \$meter,
+    "numeric|n" => \$numeric_mode,
+    "json|j" => \$json_mode,
+    "timeout|t=s" => \$timeout,
+    "output|o=s" => \$outfile
+);
 
 my $host = shift;
 
 unless ($host) {
-  print STDERR "syntax: $0 [options] <host>\n\n",
-    "Options:\n",
-    " --port=<port>, -p <port>            Use port (default $PORT)\n",
-    " --address=<addr>, -a <addr>         Modbus Address (default $ADDRESS)\n",
-    " --meter=<meter>, -m <meter>         Query meter (default 1) \n",
-    "                                     (meter = 1..3  or 0 = no meter)\n",
-    " --phase=<phase>, -P <phase>         Report single phase (default is average)\n",
-    "                                     (phase = A,B,C)\n",
-    " --battery, b                        Query battery status\n",
-    " --numeric, -n                       Numeric output mode (time, status)\n",
-    " --json, -j                          Output in JSON (instead of CSV) format\n",
-    " --timeout=<sec>, -t <sec>           Timeout (default $TIMEOUT)\n",
-    " --output=<filename>, -o <filename>  Append results to a file\n",
-    " --verbose, -v                       Verbose mode\n",
-    " --debug, -d                         Debug mode\n\n";
-  exit(1);
+    print STDERR "syntax: $0 [options] <host>\n\n",
+        "Options:\n",
+        " --port=<port>, -p <port>            Use port (default $PORT)\n",
+        " --address=<addr>, -a <addr>         Modbus Address (default $ADDRESS)\n",
+        " --meter=<meter>, -m <meter>         Query meter (default 1) \n",
+        "                                     (meter = 1..3 or 0 = no meter)\n",
+        " --phase=<phase>, -P <phase>         Report single phase (default is average)\n",
+        "                                     (phase = A,B,C)\n",
+        " --battery=<batteries>, -b <batteries> Query battery status (e.g., 1 or 1,2)\n",
+        " --numeric, -n                       Numeric output mode (time, status)\n",
+        " --json, -j                          Output in JSON (instead of CSV) format\n",
+        " --timeout=<sec>, -t <sec>           Timeout (default $TIMEOUT)\n",
+        " --output=<filename>, -o <filename>  Append results to a file\n",
+        " --verbose, -v                       Verbose mode\n",
+        " --debug, -d                         Debug mode\n\n";
+    exit(1);
 }
 
 die("invalid port ($port) specified") unless ($port > 0 && $port < 65536);
 if ($meter ne '') {
-    my @tmp = split(/\s*,\s*/,$meter);
-    
+    my @tmp = split(/\s*,\s*/, $meter);
     for my $i (0..$#tmp) {
-	my $m = int($tmp[$i]);
-	die("invalid meter specified: $tmp[$i]")  unless ($m >= 0 && $m <= 3);
-	if ($m == 0) {
-	    undef @meters;
-	    last;
-	}
-	push @meters, $m;
+        my $m = int($tmp[$i]);
+        die("invalid meter specified: $tmp[$i]") unless ($m >= 0 && $m <= 3);
+        if ($m == 0) {
+            undef @meters;
+            last;
+        }
+        push @meters, $m;
     }
 } else {
-    # default to read first (built-in) meter
-    push @meters, 1;
+    push @meters, 1;  # default to read first (built-in) meter
+}
+
+if (@batteries) {
+    for my $b (@batteries) {
+        die("Invalid battery specified: $b") unless ($b == 1 || $b == 2);
+    }
+} else {
+    @batteries = (1);  # Default to Battery 1 if -b is used without args
 }
 
 die("invalid phase ($phase) specified") unless ($phase =~ /^(A|B|C|)$/);
 if ($phase) {
-    $phase_tag='_'.$phase;
-    $phase=" (Phase $phase)";
+    $phase_tag = '_' . $phase;
+    $phase = " (Phase $phase)";
 }
 
 my $outfile_fh;
 if ($outfile) {
-    open($outfile_fh,'>>',$outfile) || die("failed to open output file for writing: $outfile");
+    open($outfile_fh, '>>', $outfile) || die("failed to open output file for writing: $outfile");
 } else {
-    open($outfile_fh,">&STDOUT") || die("failed to open stdout");
+    open($outfile_fh, ">&STDOUT") || die("failed to open stdout");
 }
 
-my $c = Device::Modbus::TCP::Client->new(host=>$host,port=>$port,timeout=>$timeout);
+my $c = Device::Modbus::TCP::Client->new(host => $host, port => $port, timeout => $timeout);
 my $tstamp = time();
 my $cb = get_inverter_common_block($c);
 
 my $fw_ver = $cb->{C_Version};
-
 $fw_ver =~ s/^0+//;
 
 if ($verbose_mode) {
-  print "INVERTER:\n";
-  print "             Model: $cb->{C_Manufacturer} $cb->{C_Model}\n";
-  print "  Firmware version: $fw_ver\n";
-  print "     Serial Number: $cb->{C_SerialNumber}\n";
-  dump_hash($cb) if ($debug_mode);
-  print "\n";
+    print "INVERTER:\n";
+    print "             Model: $cb->{C_Manufacturer} $cb->{C_Model}\n";
+    print "  Firmware version: $fw_ver\n";
+    print "     Serial Number: $cb->{C_SerialNumber}\n";
+    dump_hash($cb) if ($debug_mode);
+    print "\n";
 }
-
 
 my $mb = get_inverter_model_block($c);
 
 my $status = $I_STATUS{$mb->{I_Status}};
-my $ac_power = scale_value($mb->{I_AC_Power},$mb->{I_AC_Power_SF});
-my $dc_power = scale_value($mb->{I_DC_Power},$mb->{I_DC_Power_SF});
-my $temp = scale_value($mb->{I_Temp_Sink},$mb->{I_Temp_Sink_SF});
-my $eff = ($dc_power > 0 ? $ac_power/$dc_power*100 : 0);
-my $dc_v = scale_value($mb->{I_DC_Voltage},$mb->{I_DC_Voltage_SF});
-my $ac_v = scale_value($mb->{I_AC_VoltageAB},$mb->{I_AC_Voltage_SF});
-my $ac_i = scale_value($mb->{I_AC_Current},$mb->{I_AC_Current_SF});
-my $dc_i = scale_value($mb->{I_DC_Current},$mb->{I_DC_Current_SF});
-my $ac_f = scale_value($mb->{I_AC_Frequency},$mb->{I_AC_Frequency_SF});
-my $wh = scale_value($mb->{I_AC_Energy_WH},$mb->{I_AC_Energy_WH_SF});
-
+my $ac_power = scale_value($mb->{I_AC_Power}, $mb->{I_AC_Power_SF});
+my $dc_power = scale_value($mb->{I_DC_Power}, $mb->{I_DC_Power_SF});
+my $temp = scale_value($mb->{I_Temp_Sink}, $mb->{I_Temp_Sink_SF});
+my $eff = ($dc_power > 0 ? $ac_power / $dc_power * 100 : 0);
+my $dc_v = scale_value($mb->{I_DC_Voltage}, $mb->{I_DC_Voltage_SF});
+my $ac_v = scale_value($mb->{I_AC_VoltageAB}, $mb->{I_AC_Voltage_SF});
+my $ac_i = scale_value($mb->{I_AC_Current}, $mb->{I_AC_Current_SF});
+my $dc_i = scale_value($mb->{I_DC_Current}, $mb->{I_DC_Current_SF});
+my $ac_f = scale_value($mb->{I_AC_Frequency}, $mb->{I_AC_Frequency_SF});
+my $wh = scale_value($mb->{I_AC_Energy_WH}, $mb->{I_AC_Energy_WH_SF});
 
 if ($verbose_mode) {
-  print  "            Status: $status\n\n";
-  printf(" Power Output (AC): %12.0f W\n",$ac_power);
-  printf("  Power Input (DC): %12.0f W\n",$dc_power);
-  printf("        Efficiency: %12.2f %\n",$eff);
-  printf("  Total Production: %12.3f kWh\n",$wh/1000);
-  printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$ac_v,$ac_f);
-  printf("      Current (AC): %12.2f A\n",$ac_i);
-  printf("      Voltage (DC): %12.2f V\n",$dc_v);
-  printf("      Current (DC): %12.2f A\n",$dc_i);
-  printf("       Temperature: %12.2f C (heatsink)\n",$temp);
-  dump_hash($mb) if ($debug_mode);
-  print "\n";
+    print  "            Status: $status\n\n";
+    printf(" Power Output (AC): %12.0f W\n", $ac_power);
+    printf("  Power Input (DC): %12.0f W\n", $dc_power);
+    printf("        Efficiency: %12.2f %\n", $eff);
+    printf("  Total Production: %12.3f kWh\n", $wh / 1000);
+    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n", $ac_v, $ac_f);
+    printf("      Current (AC): %12.2f A\n", $ac_i);
+    printf("      Voltage (DC): %12.2f V\n", $dc_v);
+    printf("      Current (DC): %12.2f A\n", $dc_i);
+    printf("       Temperature: %12.2f C (heatsink)\n", $temp);
+    dump_hash($mb) if ($debug_mode);
+    print "\n";
 }
-
 
 my (@m_i, @m_e);
 my $mcount = 0;
 
 if (@meters > 0) {
     foreach $meter (@meters) {
-	if ($verbose_mode) {
-	    my $mcb = get_meter_common_block($c,$meter);
-	    print "METER (#".$meter."):\n";
-	    print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
-	    print "            Option: $mcb->{C_Option}\n";
-	    print "  Firmware version: $mcb->{C_Version}\n";
-	    print "     Serial Number: $mcb->{C_SerialNumber}\n";
-	    dump_hash($mcb) if ($debug_mode);
-	    print "\n";
-	}
-
-	my $mmb = get_meter_model_block($c,$meter);
-	$m_e[$mcount] = scale_value($mmb->{M_Exported},$mmb->{M_Energy_W_SF});
-	$m_i[$mcount] = scale_value($mmb->{M_Imported},$mmb->{M_Energy_W_SF});
-	my $m_c = scale_value($mmb->{M_AC_Current},$mmb->{M_AC_Current_SF});
-	my $m_f = scale_value($mmb->{M_AC_Freq},$mmb->{M_AC_Freq_SF});
-	my $m_v = scale_value($mmb->{M_AC_Voltage_AB},$mmb->{M_AC_Voltage_SF});
-	my $m_p = scale_value($mmb->{M_AC_Power},$mmb->{M_AC_Power_SF});
-	my $m_pa = scale_value($mmb->{M_AC_VA},$mmb->{M_AC_VA_SF});
-	my $m_pf = scale_value($mmb->{'M_AC_PF'.$phase_tag}/100.0,$mmb->{M_AC_PF_SF});
-
-	if ($verbose_mode) {
-	    printf("   Exported Energy: %12.3f kWh\n",$m_e[$mcount]/1000);
-	    printf("   Imported Energy: %12.3f kWh\n",$m_i[$mcount]/1000);
-	    printf("        Real Power: %12.0f W\n",$m_p);
-	    printf("    Apparent Power: %12.0f VA\n",$m_pa);
-	    printf("      Power Factor: %12.3f%s\n",$m_pf,$phase);
-	    printf("      Voltage (AC): %12.2f V (%.2f Hz)\n",$m_v,$m_f);
-	    printf("      Current (AC): %12.2f A\n",$m_c);
-	    dump_hash($mmb) if ($debug_mode);
-	    print "\n";
-	}
-
-	$mcount++;
-    }
-}
-
-
-my ($b_cb,$b_p,$b_e,$b_i,$b_soh,$b_soe);
-if ($battery) {
-    $b_cb = get_battery_common_block($c);
-
-    if ( $b_cb->{Manufacturer_Name} =~ /^\?/ ||
-	 $b_cb->{Model} eq '' ) {
-	$battery=0;
-	print STDERR "No battery found\n";
-    } else {
         if ($verbose_mode) {
-	    print "Battery:\n";
-	
-	    print  "               Manufacturer_Name: $b_cb->{Manufacturer_Name}              \n";
-	    print  "                           Model: $b_cb->{Model}                          \n";
-	    print  "                Firmware_Version: $b_cb->{Firmware_Version}               \n";
-	    print  "                   Serial_Number: $b_cb->{Serial_Number}                  \n";
-	    print  "                       Device_ID: $b_cb->{Device_ID}                      \n\n";
-	
-	    printf("                    Rated_Energy: %8.2f kWh\n", $b_cb->{Rated_Energy}/1000.0);
-	    printf("      Max_Charge_Continues_Power: %8.2f kW\n",$b_cb->{Max_Charge_Continues_Power}/1000.0);
-	    printf("   Max_Discharge_Continues_Power: %8.2f kW\n",$b_cb->{Max_Discharge_Continues_Power}/1000.0);
-	    printf("           Max_Charge_Peak_Power: %8.2f kW\n",$b_cb->{Max_Charge_Peak_Power}/1000.0);
-	    printf("        Max_Discharge_Peak_Power: %8.2f kW\n\n",$b_cb->{Max_Discharge_Peak_Power}/1000.0);
-	
-	    printf("             Average_Temperature: %8.2f C\n",$b_cb->{Average_Temperature});
-	    printf("                 Max_Temperature: %8.2f C\n",$b_cb->{Max_Temperature});
-	    printf("           Instantaneous_Voltage: %8.2f V\n",$b_cb->{Instantaneous_Voltage});
-	    printf("           Instantaneous_Current: %8.2f A\n",$b_cb->{Instantaneous_Current});
-	    printf("             Instantaneous_Power: %8.3f kW\n",$b_cb->{Instantaneous_Power}/1000);
-	    printf("  Lifetime_Export_Energy_Counter: %8.0f kWh\n",$b_cb->{Lifetime_Export_Energy_Counter}/1000);
-	    printf("  Lifetime_Import_Energy_Counter: %8.0f kWh\n\n",$b_cb->{Lifetime_Import_Energy_Counter}/1000);
-	
-	    printf("                      Max_Energy: %8.2f kWh\n",$b_cb->{Max_Energy}/1000);
-	    printf("                Available_Energy: %8.2f kWh\n",$b_cb->{Available_Energy}/1000);
-	    printf("                 State_of_Health: %8.2f \% \n",$b_cb->{State_of_Health});
-	    printf("                 State_of_Energy: %8.2f \% \n",$b_cb->{State_of_Energy});
-	    printf("                          Status: %8.0f \n",$b_cb->{Status});
-	    printf("                 Status_Internal: %8.0f \n\n",$b_cb->{Status_Internal});
-	}
-    
-	$b_p = -1.0 * $b_cb->{Instantaneous_Power};
-	$b_e = $b_cb->{Lifetime_Export_Energy_Counter};
-	$b_i = $b_cb->{Lifetime_Import_Energy_Counter};
-	$b_soh = $b_cb->{State_of_Health};
-	$b_soe = $b_cb->{State_of_Energy};
+            my $mcb = get_meter_common_block($c, $meter);
+            print "METER (#" . $meter . "):\n";
+            print "             Model: $mcb->{C_Manufacturer} $mcb->{C_Model}\n";
+            print "            Option: $mcb->{C_Option}\n";
+            print "  Firmware version: $mcb->{C_Version}\n";
+            print "     Serial Number: $mcb->{C_SerialNumber}\n";
+            dump_hash($mcb) if ($debug_mode);
+            print "\n";
+        }
+
+        my $mmb = get_meter_model_block($c, $meter);
+        $m_e[$mcount] = scale_value($mmb->{M_Exported}, $mmb->{M_Energy_W_SF});
+        $m_i[$mcount] = scale_value($mmb->{M_Imported}, $mmb->{M_Energy_W_SF});
+        my $m_c = scale_value($mmb->{M_AC_Current}, $mmb->{M_AC_Current_SF});
+        my $m_f = scale_value($mmb->{M_AC_Freq}, $mmb->{M_AC_Freq_SF});
+        my $m_v = scale_value($mmb->{M_AC_Voltage_AB}, $mmb->{M_AC_Voltage_SF});
+        my $m_p = scale_value($mmb->{M_AC_Power}, $mmb->{M_AC_Power_SF});
+        my $m_pa = scale_value($mmb->{M_AC_VA}, $mmb->{M_AC_VA_SF});
+        my $m_pf = scale_value($mmb->{'M_AC_PF' . $phase_tag} / 100.0, $mmb->{M_AC_PF_SF});
+
+        if ($verbose_mode) {
+            printf("   Exported Energy: %12.3f kWh\n", $m_e[$mcount] / 1000);
+            printf("   Imported Energy: %12.3f kWh\n", $m_i[$mcount] / 1000);
+            printf("        Real Power: %12.0f W\n", $m_p);
+            printf("    Apparent Power: %12.0f VA\n", $m_pa);
+            printf("      Power Factor: %12.3f%s\n", $m_pf, $phase);
+            printf("      Voltage (AC): %12.2f V (%.2f Hz)\n", $m_v, $m_f);
+            printf("      Current (AC): %12.2f A\n", $m_c);
+            dump_hash($mmb) if ($debug_mode);
+            print "\n";
+        }
+        $mcount++;
     }
 }
 
+my @b_cb;  # Array to store battery data
+my @b_p;   # Array for power
+my @b_e;   # Array for export energy
+my @b_i;   # Array for import energy
+my @b_soh; # Array for state of health
+my @b_soe; # Array for state of energy
+
+if (@batteries) {
+    foreach my $battery_num (@batteries) {
+        $b_cb[$battery_num-1] = get_battery_common_block($c, $battery_num);
+
+        if ($b_cb[$battery_num-1]{Manufacturer_Name} =~ /^\?/ || $b_cb[$battery_num-1]{Model} eq '') {
+            print STDERR "No battery found at position $battery_num\n";
+            splice(@batteries, $battery_num-1, 1);  # Remove from list if not found
+            next;
+        }
+
+        if ($verbose_mode) {
+            print "Battery #$battery_num:\n";
+            print  "               Manufacturer_Name: $b_cb[$battery_num-1]{Manufacturer_Name}              \n";
+            print  "                           Model: $b_cb[$battery_num-1]{Model}                          \n";
+            print  "                Firmware_Version: $b_cb[$battery_num-1]{Firmware_Version}               \n";
+            print  "                   Serial_Number: $b_cb[$battery_num-1]{Serial_Number}                  \n";
+            print  "                       Device_ID: $b_cb[$battery_num-1]{Device_ID}                      \n\n";
+            printf("                    Rated_Energy: %8.2f kWh\n", $b_cb[$battery_num-1]{Rated_Energy}/1000.0);
+            printf("      Max_Charge_Continues_Power: %8.2f kW\n", $b_cb[$battery_num-1]{Max_Charge_Continues_Power}/1000.0);
+            printf("   Max_Discharge_Continues_Power: %8.2f kW\n", $b_cb[$battery_num-1]{Max_Discharge_Continues_Power}/1000.0);
+            printf("           Max_Charge_Peak_Power: %8.2f kW\n", $b_cb[$battery_num-1]{Max_Charge_Peak_Power}/1000.0);
+            printf("        Max_Discharge_Peak_Power: %8.2f kW\n\n", $b_cb[$battery_num-1]{Max_Discharge_Peak_Power}/1000.0);
+            printf("             Average_Temperature: %8.2f C\n", $b_cb[$battery_num-1]{Average_Temperature});
+            printf("                 Max_Temperature: %8.2f C\n", $b_cb[$battery_num-1]{Max_Temperature});
+            printf("           Instantaneous_Voltage: %8.2f V\n", $b_cb[$battery_num-1]{Instantaneous_Voltage});
+            printf("           Instantaneous_Current: %8.2f A\n", $b_cb[$battery_num-1]{Instantaneous_Current});
+            printf("             Instantaneous_Power: %8.3f kW\n", $b_cb[$battery_num-1]{Instantaneous_Power}/1000);
+            printf("  Lifetime_Export_Energy_Counter: %8.0f kWh\n", $b_cb[$battery_num-1]{Lifetime_Export_Energy_Counter}/1000);
+            printf("  Lifetime_Import_Energy_Counter: %8.0f kWh\n\n", $b_cb[$battery_num-1]{Lifetime_Import_Energy_Counter}/1000);
+            printf("                      Max_Energy: %8.2f kWh\n", $b_cb[$battery_num-1]{Max_Energy}/1000);
+            printf("                Available_Energy: %8.2f kWh\n", $b_cb[$battery_num-1]{Available_Energy}/1000);
+            printf("                 State_of_Health: %8.2f \% \n", $b_cb[$battery_num-1]{State_of_Health});
+            printf("                 State_of_Energy: %8.2f \% \n", $b_cb[$battery_num-1]{State_of_Energy});
+            printf("                          Status: %8.0f \n", $b_cb[$battery_num-1]{Status});
+            printf("                 Status_Internal: %8.0f \n\n", $b_cb[$battery_num-1]{Status_Internal});
+        }
+
+        $b_p[$battery_num-1] = -1.0 * $b_cb[$battery_num-1]{Instantaneous_Power};
+        $b_e[$battery_num-1] = $b_cb[$battery_num-1]{Lifetime_Export_Energy_Counter};
+        $b_i[$battery_num-1] = $b_cb[$battery_num-1]{Lifetime_Import_Energy_Counter};
+        $b_soh[$battery_num-1] = $b_cb[$battery_num-1]{State_of_Health};
+        $b_soe[$battery_num-1] = $b_cb[$battery_num-1]{State_of_Energy};
+    }
+}
 
 unless ($verbose_mode) {
     if ($debug_mode) {
-	print $outfile_fh "timestamp,status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy_m1,imported_energy_m1,exported_energy_m2,imported_energy_m2";
-	print $outfile_fh "battery_exported_energy,battery_imported_energy,battery_power,battery_SOE,battery_SOH" if ($battery);
-	print $outfile_fh "\n";
+        print $outfile_fh "timestamp,status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy_m1,imported_energy_m1,exported_energy_m2,imported_energy_m2";
+        if (@batteries) {
+            print $outfile_fh ",battery1_exported_energy,battery1_imported_energy,battery1_power,battery1_SOE,battery1_SOH";
+            print $outfile_fh ",battery2_exported_energy,battery2_imported_energy,battery2_power,battery2_SOE,battery2_SOH" if grep { $_ == 2 } @batteries;
+        }
+        print $outfile_fh "\n";
     }
 
     if ($numeric_mode) {
-	$status=$mb->{I_Status};
+        $status = $mb->{I_Status};
     } else {
-	my($sec,$min,$hour,$day,$month,$year) = (localtime($tstamp))[0,1,2,3,4,5];
-	$tstamp=sprintf("%04d-%02d-%02d %02d:%02d:%02d",$year+1900,$month+1,$day,$hour,$min,$sec);
+        my ($sec, $min, $hour, $day, $month, $year) = (localtime($tstamp))[0,1,2,3,4,5];
+        $tstamp = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year+1900, $month+1, $day, $hour, $min, $sec);
     }
-    
+
     if ($json_mode) {
-	unless ($numeric_mode) {
-	    $status="\"$status\"";
-	    $tstamp="\"$tstamp\"";
-	}
-	printf $outfile_fh 
-	       "{\n" .
-	       "\t\"timestamp\": %s,\n" .
-	       "\t\"status\": %s,\n" .
-	       "\t\"ac_power\": %d,\n" .
-	       "\t\"dc_power\": %d,\n" .
-	       "\t\"total_production\": %d,\n" .
-	       "\t\"ac_voltage\": %.2f,\n" .
-	       "\t\"ac_current\": %.2f,\n" .
-	       "\t\"dc_voltage\": %.2f,\n" .
-	       "\t\"dc_current\": %.2f,\n" .
-	       "\t\"temperature\": %.2f,\n" .
-	       "\t\"exported_energy\": %d,\n" .
-	       "\t\"imported_energy\": %d,\n" .
-	       "\t\"exported_energy_m2\": %d,\n" .
-	       "\t\"imported_energy_m2\": %d\n",
-	       $tstamp,$status,$ac_power,$dc_power,$wh,
-	       $ac_v,$ac_i,$dc_v,$dc_i,
-	       $temp,$m_e[0],$m_i[0],$m_e[1],$m_i[1];
-	if ($battery) {
-	    printf $outfile_fh 
-		  "\t\"battery_exported_energy\": %d,\n" .
-		  "\t\"battery_imported_energy\": %d,\n" .
-		  "\t\"battery_power\": %.2f,\n" .
-		  "\t\"battery_SOE\": %d,\n" .
-		  "\t\"battery_SOH\": %d\n" .
-		  $b_e,$b_i,$b_p,$b_soe,$b_soh;
-	}
-	print $outfile_fh "}\n";
+        unless ($numeric_mode) {
+            $status = "\"$status\"";
+            $tstamp = "\"$tstamp\"";
+        }
+        printf $outfile_fh 
+            "{\n" .
+            "\t\"timestamp\": %s,\n" .
+            "\t\"status\": %s,\n" .
+            "\t\"ac_power\": %d,\n" .
+            "\t\"dc_power\": %d,\n" .
+            "\t\"total_production\": %d,\n" .
+            "\t\"ac_voltage\": %.2f,\n" .
+            "\t\"ac_current\": %.2f,\n" .
+            "\t\"dc_voltage\": %.2f,\n" .
+            "\t\"dc_current\": %.2f,\n" .
+            "\t\"temperature\": %.2f,\n" .
+            "\t\"exported_energy\": %d,\n" .
+            "\t\"imported_energy\": %d,\n" .
+            "\t\"exported_energy_m2\": %d,\n" .
+            "\t\"imported_energy_m2\": %d",
+            $tstamp, $status, $ac_power, $dc_power, $wh,
+            $ac_v, $ac_i, $dc_v, $dc_i,
+            $temp, $m_e[0], $m_i[0], $m_e[1], $m_i[1];
+        if (@batteries) {
+            foreach my $battery_num (@batteries) {
+                printf $outfile_fh 
+                    ",\n\t\"battery%d_exported_energy\": %d,\n" .
+                    "\t\"battery%d_imported_energy\": %d,\n" .
+                    "\t\"battery%d_power\": %.2f,\n" .
+                    "\t\"battery%d_SOE\": %.2f,\n" .
+                    "\t\"battery%d_SOH\": %.2f",
+                    $battery_num, $b_e[$battery_num-1], 
+                    $battery_num, $b_i[$battery_num-1], 
+                    $battery_num, $b_p[$battery_num-1], 
+                    $battery_num, $b_soe[$battery_num-1], 
+                    $battery_num, $b_soh[$battery_num-1];
+            }
+        }
+        print $outfile_fh "\n}\n";
     } else {
-	printf $outfile_fh 
-	       "%s,%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d",
-	       $tstamp,$status,$ac_power,$dc_power,$wh,
-	       $ac_v,$ac_i,$dc_v,$dc_i,
-	       $temp,$m_e[0],$m_i[0],$m_e[1],$m_i[1];
-	if ($battery) {
-	    printf $outfile_fh "%d,%d,%.2f,%d,%d",$b_e,$b_i,$b_p,$b_soe,$b_soh;
-	}
-	print $outfile_fh "\n";
+        printf $outfile_fh 
+            "%s,%s,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d",
+            $tstamp, $status, $ac_power, $dc_power, $wh,
+            $ac_v, $ac_i, $dc_v, $dc_i,
+            $temp, $m_e[0], $m_i[0], $m_e[1], $m_i[1];
+        if (@batteries) {
+            foreach my $battery_num (@batteries) {
+                printf $outfile_fh ",%d,%d,%.2f,%.2f,%.2f",
+                    $b_e[$battery_num-1], $b_i[$battery_num-1], $b_p[$battery_num-1], 
+                    $b_soe[$battery_num-1], $b_soh[$battery_num-1];
+            }
+        }
+        print $outfile_fh "\n";
     }
 }
 
