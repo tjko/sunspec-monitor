@@ -153,11 +153,18 @@ To log data every five minutes following cronjob could be used:
 ```
 
 
-If there is two meters in the system (typically a production meter and a second
+If there are two meters in the system (typically a production meter and a second
 import/export meter at grid connection point) both can be queried simultaneously:
 
 ```
 # sunspec-status -m 1,2 myinverter
 2018-01-30 13:42:01,ON,8007,8128,148275,237.90,33.71,359.90,22.58,54.21,148609,12,35603,8471
+```
+
+If there are two batteries in the system both can be queried simultaneously:
+
+```
+# sunspec-status -b 1,2 myinverter
+2025-02-28 23:07:42,ON (MPPT),-15,-15,262360,247.80,0.49,403.90,0.62,41.13,39625093,29111250,0,0,17674,20830,0.00,16.46,95.00,8548,18544,0.00,16.85,97.00
 ```
 
