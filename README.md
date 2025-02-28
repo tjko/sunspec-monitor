@@ -22,22 +22,25 @@ SolarEdge   |SE3680  |3.2228          |works ok
 SolarEdge   |SE3680  |3.2016          |works ok
 SolarEdge   |SE3500  |3.2186          |works ok
 SolarEdge   |SE3500  |3.2173          |often first connection fails, but subseuqent connetions work
+SolarEdge   |SE10000 |4.0022          |works ok
 
+Known to work with following Batteries:
+
+Manufacturer|Model   |Firmware Version|Notes
+------------|---------------|--------------------------------|-----
+SolarEdge   |SE Energy Bank |SMCU 1.1.51 DCDC 1.1.33 BMS 1.0 |works ok
 
 Known to work with following Meters:
 
-Manufacturer|Model          |Firmware Version|Notes
-------------|---------------|----------------|-----
-WattNode    |RWND-3D-240-MB |25              |works ok
-WattNode    |WNC-3D-240-MB  |24              |doesnt appear to work (as "Export+Import" meter) ?
-WattNode    |WNC-3Y-400-MB  |24              |works ok (for help see #4)
-WattNode    |WND-3Y-400-MB  |25              |doesnt appear to work (as "Export+Import" meter) ?
-
-
-
+Manufacturer|Model           |Firmware Version|Notes
+------------|----------------|----------------|-----
+SolarEdge   |SE-MTR-3Y-400V-A|79              |works ok
+WattNode    |RWND-3D-240-MB  |25              |works ok
+WattNode    |WNC-3D-240-MB   |24              |doesnt appear to work (as "Export+Import" meter) ?
+WattNode    |WNC-3Y-400-MB   |24              |works ok (for help see #4)
+WattNode    |WND-3Y-400-MB   |25              |doesnt appear to work (as "Export+Import" meter) ?
 
 This script should work with any inverter that supports Modbus TCP and Sunspec standard...
-
 
 ## Requirements
 
@@ -58,8 +61,8 @@ to query it as well.  Default is to query meter in address 1. To query also seco
 option *-m 1,2* can be used.
 If no meter is installed *-m 0* can be used to skip querying any meter.
 
-StorEdge battery status can be also reported if one is installed. To enable display of battery
-status option *-b* can be used. This support was contributed by Ilker Deligoz.
+StorEdge battery status can be also reported if installed. To enable display of battery
+status option *-b* can be used. This support was contributed by Ilker Deligoz. Multiple battery support contributed by Alastair Bor.
 
 
 ### Syntax
@@ -68,21 +71,20 @@ status option *-b* can be used. This support was contributed by Ilker Deligoz.
 syntax: sunspec-status [options] <host>
 
 Options:
- --port=<port>, -p <port>            Use port (default 502)
- --address=<addr>, -a <addr>         Modbus Address (default 1)
- --meter=<meter>, -m <meter>         Query meter (default 1) 
+ --port=<port>, -p <port>             Use port (default 502)
+ --address=<addr>, -a <addr>          Modbus Address (default 1)
+ --meter=<meter>, -m <meter>          Query meter (default 1) 
                                       (meter = 1..3  or 0 = no meter)
- --phase=<phase>, -P <phase>         Report PF for single phase only
+ --phase=<phase>, -P <phase>          Report PF for single phase only
                                       (phase = A,B,C)
- --battery, -b                       Query battery status
- --numeric, -n                       Numeric output mode (time, status)
- --json, -j                          Output in JSON (instead of CSV) format
- --timeout=<sec>, -t <sec>           Timeout (default 10)
- --output=<filename>, -f <filename>  Append results to a file
- --verbose, -v                       Verbose mode
- --debug, -d                         Debug mode (dump raw Sunspec register values)
+ -battery=<batteries>, -b <batteries> Query battery status (e.g., 1 or 1,2)
+ --numeric, -n                        Numeric output mode (time, status)
+ --json, -j                           Output in JSON (instead of CSV) format
+ --timeout=<sec>, -t <sec>            Timeout (default 10)
+ --output=<filename>, -f <filename>   Append results to a file
+ --verbose, -v                        Verbose mode
+ --debug, -d                          Debug mode (dump raw Sunspec register values)
 ```
-
 
 ### Examples
 
@@ -93,11 +95,10 @@ To query Inverter information and current status *-v* (or *--verbose*) option ca
 # sunspec-status -v myinverter
 
 INVERTER:
-             Model: SolarEdge  SE11400
-  Firmware version: 3.1968
-     Serial Number: 7Dxxxxxx
-
-            Status: ON (MPPT)
+Model: SolarEdge  SE11400
+Firmware version: 3.1968
+Serial Number: 7Dxxxxxx
+Status: ON (MPPT)
 
  Power Output (AC):         8014 W
   Power Input (DC):         8136 W
