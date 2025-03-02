@@ -389,8 +389,8 @@ sub get_battery_common_block(**) {
 
 
     $b_cb->{Rated_Energy}                   = float32(substr($data,0  ,2*2 ));
-    $b_cb->{Max_Charge_Continues_Power}     = float32(substr($data,2*2,2*2 ));
-    $b_cb->{Max_Discharge_Continues_Power}  = float32(substr($data,4*2,2*2 ));
+    $b_cb->{Max_Charge_Continuous_Power}     = float32(substr($data,2*2,2*2 ));
+    $b_cb->{Max_Discharge_Continuous_Power}  = float32(substr($data,4*2,2*2 ));
     $b_cb->{Max_Charge_Peak_Power}          = float32(substr($data,6*2,2*2 ));
     $b_cb->{Max_Discharge_Peak_Power}       = float32(substr($data,8*2,2*2 ));
 
@@ -460,19 +460,19 @@ my $host = shift;
 unless ($host) {
   print STDERR "syntax: $0 [options] <host>\n\n",
     "Options:\n",
-    " --port=<port>, -p <port>            Use port (default $PORT)\n",
-    " --address=<addr>, -a <addr>         Modbus Address (default $ADDRESS)\n",
-    " --meter=<meter>, -m <meter>         Query meter (default 1) \n",
-    "                                     (meter = 1..3  or 0 = no meter)\n",
-    " --phase=<phase>, -P <phase>         Report single phase (default is average)\n",
-    "                                     (phase = A,B,C)\n",
+    " --port=<port>, -p <port>              Use port (default $PORT)\n",
+    " --address=<addr>, -a <addr>           Modbus Address (default $ADDRESS)\n",
+    " --meter=<meter>, -m <meter>           Query meter (default 1) \n",
+    "                                       (meter = 1..3  or 0 = no meter)\n",
+    " --phase=<phase>, -P <phase>           Report single phase (default is average)\n",
+    "                                       (phase = A,B,C)\n",
     " --battery=<batteries>, -b <batteries> Query battery status (e.g., 1 or 1,2)\n",
-    " --numeric, -n                       Numeric output mode (time, status)\n",
-    " --json, -j                          Output in JSON (instead of CSV) format\n",
-    " --timeout=<sec>, -t <sec>           Timeout (default $TIMEOUT)\n",
-    " --output=<filename>, -o <filename>  Append results to a file\n",
-    " --verbose, -v                       Verbose mode\n",
-    " --debug, -d                         Debug mode\n\n";
+    " --numeric, -n                         Numeric output mode (time, status)\n",
+    " --json, -j                            Output in JSON (instead of CSV) format\n",
+    " --timeout=<sec>, -t <sec>             Timeout (default $TIMEOUT)\n",
+    " --output=<filename>, -o <filename>    Append results to a file\n",
+    " --verbose, -v                         Verbose mode\n",
+    " --debug, -d                           Debug mode\n\n";
   exit(1);
 }
 
@@ -632,8 +632,8 @@ if (@batteries) {
 	    print  "                       Device_ID: $b_cb[$battery_num-1]->{Device_ID}                      \n\n";
 	
 	    printf("                    Rated_Energy: %8.2f kWh\n", $b_cb[$battery_num-1]->{Rated_Energy}/1000.0);
-	    printf("      Max_Charge_Continues_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Charge_Continues_Power}/1000.0);
-	    printf("   Max_Discharge_Continues_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Discharge_Continues_Power}/1000.0);
+	    printf("     Max_Charge_Continuous_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Charge_Continuous_Power}/1000.0);
+	    printf("  Max_Discharge_Continuous_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Discharge_Continuous_Power}/1000.0);
 	    printf("           Max_Charge_Peak_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Charge_Peak_Power}/1000.0);
 	    printf("        Max_Discharge_Peak_Power: %8.2f kW\n\n",$b_cb[$battery_num-1]->{Max_Discharge_Peak_Power}/1000.0);
 	
