@@ -23,7 +23,7 @@
 
 use Data::Dumper;
 use Device::Modbus::TCP::Client;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case); # Fix error message: Duplicate specification "phase|P=s" for option "p" 
 use strict;
 
 
@@ -36,7 +36,8 @@ my $SUNSPEC_I_COMMON_BLOCK_START = 40000;
 my $SUNSPEC_I_MODEL_BLOCK_START = 40069;
 my $SUNSPEC_M_COMMON_BLOCK_START = 40121;
 my $SUNSPEC_M_MODEL_BLOCK_START = 40188;
-my $SE_I_BATTERY_BLOCK_START = 57600;
+my $SE_I_BATTERY_BLOCK_START_B1 = 57600;  # Battery 1
+my $SE_I_BATTERY_BLOCK_START_B2 = 57856;  # Battery 2 
 
 my %I_STATUS = ( 
     0=>'Unknown', 
@@ -354,17 +355,20 @@ sub get_meter_model_block(**) {
 
 # get_battery_common_block - return hash containing battery common block values
 #
-sub get_battery_common_block(*) {
-    my ($ctx) = @_;
-    
-    my $req = $ctx->read_holding_registers(unit=>$address, address=>$SE_I_BATTERY_BLOCK_START, quantity=>65); #132
-    $ctx->send_request($req) || die("send_request(): failed");
+sub get_battery_common_block(**) {
+    my ($ctx, $battery_num) = @_;
+    $battery_num = 1 unless defined $battery_num;  # Default to Battery 1
+
+    # Calculate starting address based on battery number
+    my $base_address = ($battery_num == 1) ? $SE_I_BATTERY_BLOCK_START_B1 : $SE_I_BATTERY_BLOCK_START_B2;
+
+    my $req = $ctx->read_holding_registers(unit => $address, address => $base_address, quantity => 65);
+    $ctx->send_request($req) || die("send_request(): failed for Battery $battery_num");
     my $adu = $ctx->receive_response();
-    die("Read of Battery Common block registers failed (device does not support SunSpec?)")
+    die("Read of Battery $battery_num Common block registers failed (device does not support SunSpec?)")
 	unless ($adu->success);
 
-    my $data = pack("n*",@{$adu->values});
-    my $my_values1 = @{$adu->values};
+    my $data = pack("n*", @{$adu->values});
     my $b_cb;
 
     $b_cb->{Manufacturer_Name}              = unpack("A*",substr($data,0,16*2));
@@ -373,30 +377,30 @@ sub get_battery_common_block(*) {
     $b_cb->{Serial_Number}                  = unpack("A*",substr($data,48*2,16*2));
     $b_cb->{Device_ID}                      = unpack("n",substr($data,64*2,1*2 ));
 
-    $req = $ctx->read_holding_registers(unit=>$address, address=>$SE_I_BATTERY_BLOCK_START+65+1, quantity=>10); #132
-    $ctx->send_request($req) || die("send_request(): failed");
+    $req = $ctx->read_holding_registers(unit => $address, address => $base_address + 65 + 1, quantity => 10);
+    $ctx->send_request($req) || die("send_request(): failed for Battery $battery_num");
     $adu = $ctx->receive_response();
-    die("Read of Battery Common block registers failed (device does not support SunSpec?)")
-	unless ($adu->success);
+    die("Read of Battery $battery_num Common block registers failed (device does not support SunSpec?)")
+        unless ($adu->success);
 
 
-    $data = pack("n*",@{$adu->values});
-    my $my_values2 = @{$adu->values};
+   $data = pack("n*", @{$adu->values});
+
 
 
     $b_cb->{Rated_Energy}                   = float32(substr($data,0  ,2*2 ));
-    $b_cb->{Max_Charge_Continues_Power}     = float32(substr($data,2*2,2*2 ));
-    $b_cb->{Max_Discharge_Continues_Power}  = float32(substr($data,4*2,2*2 ));
+    $b_cb->{Max_Charge_Continuous_Power}     = float32(substr($data,2*2,2*2 ));
+    $b_cb->{Max_Discharge_Continuous_Power}  = float32(substr($data,4*2,2*2 ));
     $b_cb->{Max_Charge_Peak_Power}          = float32(substr($data,6*2,2*2 ));
     $b_cb->{Max_Discharge_Peak_Power}       = float32(substr($data,8*2,2*2 ));
 
 
     $req = $ctx->read_holding_registers(unit=>$address,
-					address=>$SE_I_BATTERY_BLOCK_START+76+32,
+					address=>$base_address+76+32,
 					quantity=>30);
-    $ctx->send_request($req) || die("send_request(): failed");
+    $ctx->send_request($req) || die("send_request(): failed for Battery $battery_num");
     $adu = $ctx->receive_response();
-    die("Read of Battery Common block registers failed (device does not support SunSpec?)")
+    die("Read of Battery $battery_num Common block registers failed (device does not support SunSpec?)")
 	unless ($adu->success);
 
     $data = pack("n*",@{$adu->values});
@@ -432,14 +436,15 @@ my $json_mode = 0;
 my $phase;
 my $phase_tag;
 my $meter;
-my $battery = 0;
 my $port = $PORT;
 my $timeout = $TIMEOUT;
 my $outfile;
 my @meters;
+my @batteries;
+
 
 GetOptions("verbose|v" => \$verbose_mode,
-	   "battery|b" => \$battery,
+    "battery|b=s" => sub { @batteries = split(/\s*,\s*/, $_[1]); },  # Parse comma-separated list
 	   "debug|d" => \$debug_mode,
 	   "port|p=s" => \$port,
 	   "address|a=s" => \$address,
@@ -455,19 +460,19 @@ my $host = shift;
 unless ($host) {
   print STDERR "syntax: $0 [options] <host>\n\n",
     "Options:\n",
-    " --port=<port>, -p <port>            Use port (default $PORT)\n",
-    " --address=<addr>, -a <addr>         Modbus Address (default $ADDRESS)\n",
-    " --meter=<meter>, -m <meter>         Query meter (default 1) \n",
-    "                                     (meter = 1..3  or 0 = no meter)\n",
-    " --phase=<phase>, -P <phase>         Report single phase (default is average)\n",
-    "                                     (phase = A,B,C)\n",
-    " --battery, b                        Query battery status\n",
-    " --numeric, -n                       Numeric output mode (time, status)\n",
-    " --json, -j                          Output in JSON (instead of CSV) format\n",
-    " --timeout=<sec>, -t <sec>           Timeout (default $TIMEOUT)\n",
-    " --output=<filename>, -o <filename>  Append results to a file\n",
-    " --verbose, -v                       Verbose mode\n",
-    " --debug, -d                         Debug mode\n\n";
+    " --port=<port>, -p <port>              Use port (default $PORT)\n",
+    " --address=<addr>, -a <addr>           Modbus Address (default $ADDRESS)\n",
+    " --meter=<meter>, -m <meter>           Query meter (default 1) \n",
+    "                                       (meter = 1..3  or 0 = no meter)\n",
+    " --phase=<phase>, -P <phase>           Report single phase (default is average)\n",
+    "                                       (phase = A,B,C)\n",
+    " --battery=<batteries>, -b <batteries> Query battery status (e.g., 1 or 1,2)\n",
+    " --numeric, -n                         Numeric output mode (time, status)\n",
+    " --json, -j                            Output in JSON (instead of CSV) format\n",
+    " --timeout=<sec>, -t <sec>             Timeout (default $TIMEOUT)\n",
+    " --output=<filename>, -o <filename>    Append results to a file\n",
+    " --verbose, -v                         Verbose mode\n",
+    " --debug, -d                           Debug mode\n\n";
   exit(1);
 }
 
@@ -488,6 +493,17 @@ if ($meter ne '') {
     # default to read first (built-in) meter
     push @meters, 1;
 }
+
+if (@batteries) {
+    for my $b (@batteries) {
+        die("Invalid battery specified: $b") unless ($b == 1 || $b == 2);
+    }
+} else {
+    @batteries = (1);  # Default to Battery 1 if -b is used without args
+}
+
+
+
 
 die("invalid phase ($phase) specified") unless ($phase =~ /^(A|B|C|)$/);
 if ($phase) {
@@ -594,51 +610,54 @@ if (@meters > 0) {
 }
 
 
-my ($b_cb,$b_p,$b_e,$b_i,$b_soh,$b_soe);
-if ($battery) {
-    $b_cb = get_battery_common_block($c);
+my (@b_cb,@b_p,@b_e,@b_i,@b_soh,@b_soe);
+if (@batteries) {
+    foreach my $battery_num (@batteries) {
+        $b_cb[$battery_num-1] = get_battery_common_block($c, $battery_num);
 
-    if ( $b_cb->{Manufacturer_Name} =~ /^\?/ ||
-	 $b_cb->{Model} eq '' ) {
-	$battery=0;
-	print STDERR "No battery found\n";
-    } else {
+    if ( $b_cb[$battery_num-1]->{Manufacturer_Name} =~ /^\?/ ||
+	 $b_cb[$battery_num-1]->{Model} eq '' ) {
+	print STDERR "No battery found at position $battery_num\n";
+    splice(@batteries, $battery_num-1, 1);  # Remove from list if not found
+    next;
+
+    } 
         if ($verbose_mode) {
-	    print "Battery:\n";
+	    print "Battery #$battery_num:\n";
 	
-	    print  "               Manufacturer_Name: $b_cb->{Manufacturer_Name}              \n";
-	    print  "                           Model: $b_cb->{Model}                          \n";
-	    print  "                Firmware_Version: $b_cb->{Firmware_Version}               \n";
-	    print  "                   Serial_Number: $b_cb->{Serial_Number}                  \n";
-	    print  "                       Device_ID: $b_cb->{Device_ID}                      \n\n";
+	    print  "               Manufacturer_Name: $b_cb[$battery_num-1]->{Manufacturer_Name}              \n";
+	    print  "                           Model: $b_cb[$battery_num-1]->{Model}                          \n";
+	    print  "                Firmware_Version: $b_cb[$battery_num-1]->{Firmware_Version}               \n";
+	    print  "                   Serial_Number: $b_cb[$battery_num-1]->{Serial_Number}                  \n";
+	    print  "                       Device_ID: $b_cb[$battery_num-1]->{Device_ID}                      \n\n";
 	
-	    printf("                    Rated_Energy: %8.2f kWh\n", $b_cb->{Rated_Energy}/1000.0);
-	    printf("      Max_Charge_Continues_Power: %8.2f kW\n",$b_cb->{Max_Charge_Continues_Power}/1000.0);
-	    printf("   Max_Discharge_Continues_Power: %8.2f kW\n",$b_cb->{Max_Discharge_Continues_Power}/1000.0);
-	    printf("           Max_Charge_Peak_Power: %8.2f kW\n",$b_cb->{Max_Charge_Peak_Power}/1000.0);
-	    printf("        Max_Discharge_Peak_Power: %8.2f kW\n\n",$b_cb->{Max_Discharge_Peak_Power}/1000.0);
+	    printf("                    Rated_Energy: %8.2f kWh\n", $b_cb[$battery_num-1]->{Rated_Energy}/1000.0);
+	    printf("     Max_Charge_Continuous_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Charge_Continuous_Power}/1000.0);
+	    printf("  Max_Discharge_Continuous_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Discharge_Continuous_Power}/1000.0);
+	    printf("           Max_Charge_Peak_Power: %8.2f kW\n",$b_cb[$battery_num-1]->{Max_Charge_Peak_Power}/1000.0);
+	    printf("        Max_Discharge_Peak_Power: %8.2f kW\n\n",$b_cb[$battery_num-1]->{Max_Discharge_Peak_Power}/1000.0);
 	
-	    printf("             Average_Temperature: %8.2f C\n",$b_cb->{Average_Temperature});
-	    printf("                 Max_Temperature: %8.2f C\n",$b_cb->{Max_Temperature});
-	    printf("           Instantaneous_Voltage: %8.2f V\n",$b_cb->{Instantaneous_Voltage});
-	    printf("           Instantaneous_Current: %8.2f A\n",$b_cb->{Instantaneous_Current});
-	    printf("             Instantaneous_Power: %8.3f kW\n",$b_cb->{Instantaneous_Power}/1000);
-	    printf("  Lifetime_Export_Energy_Counter: %8.0f kWh\n",$b_cb->{Lifetime_Export_Energy_Counter}/1000);
-	    printf("  Lifetime_Import_Energy_Counter: %8.0f kWh\n\n",$b_cb->{Lifetime_Import_Energy_Counter}/1000);
+	    printf("             Average_Temperature: %8.2f C\n",$b_cb[$battery_num-1]->{Average_Temperature});
+	    printf("                 Max_Temperature: %8.2f C\n",$b_cb[$battery_num-1]->{Max_Temperature});
+	    printf("           Instantaneous_Voltage: %8.2f V\n",$b_cb[$battery_num-1]->{Instantaneous_Voltage});
+	    printf("           Instantaneous_Current: %8.2f A\n",$b_cb[$battery_num-1]->{Instantaneous_Current});
+	    printf("             Instantaneous_Power: %8.3f kW\n",$b_cb[$battery_num-1]->{Instantaneous_Power}/1000);
+	    printf("  Lifetime_Export_Energy_Counter: %8.0f kWh\n",$b_cb[$battery_num-1]->{Lifetime_Export_Energy_Counter}/1000);
+	    printf("  Lifetime_Import_Energy_Counter: %8.0f kWh\n\n",$b_cb[$battery_num-1]->{Lifetime_Import_Energy_Counter}/1000);
 	
-	    printf("                      Max_Energy: %8.2f kWh\n",$b_cb->{Max_Energy}/1000);
-	    printf("                Available_Energy: %8.2f kWh\n",$b_cb->{Available_Energy}/1000);
-	    printf("                 State_of_Health: %8.2f \% \n",$b_cb->{State_of_Health});
-	    printf("                 State_of_Energy: %8.2f \% \n",$b_cb->{State_of_Energy});
-	    printf("                          Status: %8.0f \n",$b_cb->{Status});
-	    printf("                 Status_Internal: %8.0f \n\n",$b_cb->{Status_Internal});
+	    printf("                      Max_Energy: %8.2f kWh\n",$b_cb[$battery_num-1]->{Max_Energy}/1000);
+	    printf("                Available_Energy: %8.2f kWh\n",$b_cb[$battery_num-1]->{Available_Energy}/1000);
+	    printf("                 State_of_Health: %8.2f \% \n",$b_cb[$battery_num-1]->{State_of_Health});
+	    printf("                 State_of_Energy: %8.2f \% \n",$b_cb[$battery_num-1]->{State_of_Energy});
+	    printf("                          Status: %8.0f \n",$b_cb[$battery_num-1]->{Status});
+	    printf("                 Status_Internal: %8.0f \n\n",$b_cb[$battery_num-1]->{Status_Internal});
 	}
     
-	$b_p = -1.0 * $b_cb->{Instantaneous_Power};
-	$b_e = $b_cb->{Lifetime_Export_Energy_Counter};
-	$b_i = $b_cb->{Lifetime_Import_Energy_Counter};
-	$b_soh = $b_cb->{State_of_Health};
-	$b_soe = $b_cb->{State_of_Energy};
+	$b_p[$battery_num-1] = -1.0 * $b_cb[$battery_num-1]->{Instantaneous_Power};
+	$b_e[$battery_num-1] = $b_cb[$battery_num-1]->{Lifetime_Export_Energy_Counter};
+	$b_i[$battery_num-1] = $b_cb[$battery_num-1]->{Lifetime_Import_Energy_Counter};
+	$b_soh[$battery_num-1] = $b_cb[$battery_num-1]->{State_of_Health};
+	$b_soe[$battery_num-1] = $b_cb[$battery_num-1]->{State_of_Energy};
     }
 }
 
@@ -646,7 +665,10 @@ if ($battery) {
 unless ($verbose_mode) {
     if ($debug_mode) {
 	print $outfile_fh "timestamp,status,ac_power,dc_power,total_production,ac_voltage,ac_current,dc_voltage,dc_current,temperature,exported_energy_m1,imported_energy_m1,exported_energy_m2,imported_energy_m2";
-	print $outfile_fh "battery_exported_energy,battery_imported_energy,battery_power,battery_SOE,battery_SOH" if ($battery);
+        if (@batteries) {
+            print $outfile_fh ",battery1_exported_energy,battery1_imported_energy,battery1_power,battery1_SOE,battery1_SOH";
+            print $outfile_fh ",battery2_exported_energy,battery2_imported_energy,battery2_power,battery2_SOE,battery2_SOH" if grep { $_ == 2 } @batteries;
+    }
 	print $outfile_fh "\n";
     }
 
@@ -681,15 +703,20 @@ unless ($verbose_mode) {
 	       $tstamp,$status,$ac_power,$dc_power,$wh,
 	       $ac_v,$ac_i,$dc_v,$dc_i,
 	       $temp,$m_e[0],$m_i[0],$m_e[1],$m_i[1];
-	if ($battery) {
-	    printf $outfile_fh 
-		  "\t\"battery_exported_energy\": %d,\n" .
-		  "\t\"battery_imported_energy\": %d,\n" .
-		  "\t\"battery_power\": %.2f,\n" .
-		  "\t\"battery_SOE\": %d,\n" .
-		  "\t\"battery_SOH\": %d\n" .
-		  $b_e,$b_i,$b_p,$b_soe,$b_soh;
-	}
+	if (@batteries) {
+           foreach my $battery_num (@batteries) {
+		    printf $outfile_fh 
+              ",\n\t\"battery%d_exported_energy\": %d,\n" .
+               "\t\"battery%d_imported_energy\": %d,\n" .
+               "\t\"battery%d_power\": %.2f,\n" .
+               "\t\"battery%d_SOE\": %.2f,\n" .
+               "\t\"battery%d_SOH\": %.2f",
+               $battery_num, $b_e[$battery_num-1], 
+               $battery_num, $b_i[$battery_num-1], 
+               $battery_num, $b_p[$battery_num-1], 
+               $battery_num, $b_soe[$battery_num-1], 
+               $battery_num, $b_soh[$battery_num-1];	}
+    }
 	print $outfile_fh "}\n";
     } else {
 	printf $outfile_fh 
@@ -697,9 +724,13 @@ unless ($verbose_mode) {
 	       $tstamp,$status,$ac_power,$dc_power,$wh,
 	       $ac_v,$ac_i,$dc_v,$dc_i,
 	       $temp,$m_e[0],$m_i[0],$m_e[1],$m_i[1];
-	if ($battery) {
-	    printf $outfile_fh "%d,%d,%.2f,%d,%d",$b_e,$b_i,$b_p,$b_soe,$b_soh;
-	}
+        if (@batteries) {
+            foreach my $battery_num (@batteries) {
+                printf $outfile_fh ",%d,%d,%.2f,%.2f,%.2f",
+                    $b_e[$battery_num-1], $b_i[$battery_num-1], $b_p[$battery_num-1], 
+                    $b_soe[$battery_num-1], $b_soh[$battery_num-1];
+            }
+        }
 	print $outfile_fh "\n";
     }
 }
